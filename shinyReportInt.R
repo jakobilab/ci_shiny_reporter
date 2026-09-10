@@ -416,7 +416,36 @@ if (has_funding) {
 # ══════════════════════════════════════════════════════════════════════════════
 ui <- fluidPage(
   theme = shinytheme("yeti"),
-  titlePanel("Repository Quality Dashboard"),
+  titlePanel(
+    tags$div(
+      style = "line-height: 1.35; padding: 6px 0;",
+      tags$h2(
+        "Continuous Integration and Software Quality in Scientific Software: A Large-Scale Empirical Analysis of GitHub Repositories",
+        style = "font-weight: 700; font-size: 26px; margin-bottom: 6px;"
+      ),
+      tags$div(
+        style = "font-size: 17px; color: #555;",
+        tags$a(
+          href = "https://doi.org/10.XXXX/XXXXXXX", 
+          target = "_blank",
+          style = "color: #555; text-decoration: underline;",
+          "DOI: 10.XXXX/XXXXXXX" 
+        ),
+        tags$span(" \u2003|\u2003 ", style = "color:#aaa;"),
+        tags$a(
+          href = "https://paper-link.example.com",  
+          target = "_blank",
+          icon("file-text"), "Read the paper"
+        ),
+        tags$span(" \u2003|\u2003 ", style = "color:#aaa;"),
+        tags$a(
+          href = "https://jakobilab.org",
+          target = "_blank",
+          icon("globe"), "jakobilab.org"
+        )
+      )
+    )
+  ),
   
   sidebarLayout(
     sidebarPanel(width = 3,
