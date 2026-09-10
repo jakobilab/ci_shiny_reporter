@@ -348,7 +348,7 @@ if (has_citations) {
   citations_raw <- read_csv(cit_file, show_col_types = FALSE) %>%
     distinct(repo, .keep_all = TRUE) %>%
     mutate(
-
+      
       doi_is_paper = !is.na(doi) &
         str_detect(doi, "^10\\.") &
         !str_detect(doi, "^10\\.(5281|6084|17605|32614|5438)/"),
@@ -653,7 +653,7 @@ server <- function(input, output) {
                         labels=c("Continuous Integration","Testing")) +
       labs(title="CI and Testing Prevalence by Quality Tier",
            x="Quality Group by RQI", y="Prevalence (%)", fill="Metric") +
-      theme_minimal(base_size=13) +
+      theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) +
       theme(plot.title=element_text(face="bold",hjust=0.5))
   })
   
@@ -692,9 +692,9 @@ server <- function(input, output) {
       labs(title="CI and Testing Prevalence Across Repository Quality",
            subtitle=subtitle_str, x="RQI (1–5)", y="Prevalence (%)",
            color="Metric", fill="Metric") +
-      theme_minimal(base_size=13) +
+      theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) +
       theme(plot.title=element_text(face="bold",hjust=0.5),
-            plot.subtitle=element_text(hjust=0.5,color="gray40",size=10),
+            plot.subtitle=element_text(hjust=0.5,color="gray40",size=16),
             legend.position="bottom")
   })
   
@@ -715,7 +715,7 @@ server <- function(input, output) {
       labs(title="Comparative Quality Distribution Across Repository Types",
            x="Normalized (1–5)", y="Density / Proportion",
            fill="Repository Type", color="Repository Type") +
-      theme_minimal(base_size=13) +
+      theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) +
       theme(legend.position="top", plot.title=element_text(face="bold",hjust=0.5))
   })
   
@@ -733,12 +733,12 @@ server <- function(input, output) {
                  color="darkblue", linetype="dashed", linewidth=1) +
       labs(title="Overall Distribution of Normalized RQI",
            x="RQI (1–5)", y="Density") +
-      theme_minimal(base_size=13)
+      theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16))
     
     p_qq <- ggplot(data.frame(z=z_samp), aes(sample=z)) +
       stat_qq(color="#1F78B4") +
       stat_qq_line(color="red", linewidth=1) +
-      theme_minimal(base_size=13)
+      theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16))
     
     p_dist + p_qq
   })
@@ -754,7 +754,7 @@ server <- function(input, output) {
       scale_color_manual(values=type_colors) +
       labs(title="Distribution and Density by Repository Type",
            x="RQI (1–5)", y="Density") +
-      theme_minimal(base_size=13) +
+      theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) +
       theme(legend.position="none",
             plot.title=element_text(face="bold",hjust=0.5))
   })
@@ -797,9 +797,9 @@ server <- function(input, output) {
                 inherit.aes=FALSE, size=5, fontface="bold") +
       scale_fill_manual(values=col_pal) +
       labs(x=NULL, y="Mean RQI", title="Bioinformatics vs All Other Categories") +
-      theme_minimal(base_size=13) +
+      theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) +
       theme(legend.position="none",
-            axis.text.x=element_text(angle=30,hjust=1),
+            axis.text.x=element_text(angle=30,hjust=1,size=18),
             plot.title=element_text(face="bold",hjust=0.5))
   })
   
@@ -824,9 +824,9 @@ server <- function(input, output) {
       geom_text(aes(x=1.5,y=y_text,label=sig_label), size=5, fontface="bold") +
       labs(title=paste(input$repo_1,"vs",input$repo_2),
            subtitle="Tukey HSD Comparison", x=NULL, y="Mean RQI (±95% CI)") +
-      theme_minimal(base_size=13) +
+      theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) +
       theme(legend.position="none",
-            axis.text.x=element_text(angle=30,hjust=1),
+            axis.text.x=element_text(angle=30,hjust=1,size=18),
             plot.title=element_text(face="bold",hjust=0.5))
   })
   
@@ -851,7 +851,7 @@ server <- function(input, output) {
                 size=5, fontface="bold") +
       scale_fill_manual(values=colors) +
       labs(title=paste(title_prefix,"Impact on Quality"), x=xlab, y="Mean RQI (1–5)") +
-      theme_minimal(base_size=13) + theme(legend.position="none")
+      theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) + theme(legend.position="none")
   }
   
   output$ci_impact_plot   <- renderPlot(make_impact_plot(filtered_repo(),"ci_present",
@@ -883,7 +883,7 @@ server <- function(input, output) {
       scale_y_continuous(limits=c(0,5),breaks=seq(0,5,1)) +
       labs(title="CI Presence Effect per Repository Type",
            x="CI (0=No, 1=Yes)", y="RQI (1–5)") +
-      theme_minimal(base_size=13) +
+      theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) +
       theme(strip.text=element_text(face="bold"), legend.position="none")
   })
   
@@ -910,7 +910,7 @@ server <- function(input, output) {
       scale_y_continuous(limits=c(0,5),breaks=seq(0,5,1)) +
       labs(title="Testing Presence Effect per Repository Type",
            x="Tests (0=No, 1=Yes)", y="RQI (1–5)") +
-      theme_minimal(base_size=13) +
+      theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) +
       theme(strip.text=element_text(face="bold"), legend.position="none")
   })
   
@@ -954,7 +954,7 @@ server <- function(input, output) {
                        pcol=c("#1B9E77","#7570B3","#D95F02"),
                        pfcol=scales::alpha(c("#1B9E77","#7570B3","#D95F02"),0.35),
                        plwd=3, cglcol="grey", cglty=1, axislabcol="grey40",
-                       caxislabels=c("0","25","50","75","100"), vlcex=1.1,
+                       caxislabels=c("0","25","50","75","100"), vlcex=1.6,
                        title=paste("Top vs Mid vs Bottom —", input$repo_type))
       legend("topright", legend=c("Top 100","Mid 100","Bottom 100"),
              col=c("#1B9E77","#7570B3","#D95F02"), lty=1, lwd=3, bty="n")
@@ -973,7 +973,7 @@ server <- function(input, output) {
           fmsb::radarchart(build_single_radar_df(row_df), axistype = 1,
                            pcol = type_colors[[cat]], pfcol = scales::alpha(type_colors[[cat]], 0.35),
                            plwd = 3, cglcol = "gray80", cglty = 1, cglwd = 0.8,
-                           axislabcol = "gray40", vlcex = 0.9,
+                           axislabcol = "gray40", vlcex = 1.4,
                            caxislabels = c("0","25","50","75","100"), title = "")
           mtext(cat, side = 3, line = 1.4, cex = 1.0, font = 2)
         } else {
@@ -997,7 +997,7 @@ server <- function(input, output) {
           fmsb::radarchart(build_single_radar_df(top_row), axistype = 1,
                            pcol = "#1F78B4", pfcol = scales::alpha("#1F78B4", 0.35),
                            plwd = 3, cglcol = "gray80", cglty = 1, cglwd = 0.8,
-                           axislabcol = "gray40", vlcex = 0.85,
+                           axislabcol = "gray40", vlcex = 1.3,
                            caxislabels = c("0","25","50","75","100"), title = "")
           mtext(paste0(cat, " — Top 20"), side = 3, line = 1.4, cex = 0.9, font = 2)
         } else {
@@ -1008,7 +1008,7 @@ server <- function(input, output) {
           fmsb::radarchart(build_single_radar_df(bot_row), axistype = 1,
                            pcol = "#E31A1C", pfcol = scales::alpha("#E31A1C", 0.35),
                            plwd = 3, cglcol = "gray80", cglty = 1, cglwd = 0.8,
-                           axislabcol = "gray40", vlcex = 0.85,
+                           axislabcol = "gray40", vlcex = 1.3,
                            caxislabels = c("0","25","50","75","100"), title = "")
           mtext(paste0(cat, " — Bottom 20"), side = 3, line = 1.4, cex = 0.9, font = 2)
         } else {
@@ -1035,7 +1035,7 @@ server <- function(input, output) {
       scale_color_manual(values=c("Has CI"="#1F78B4","No CI"="#A6CEE3")) +
       labs(title="Mean RQI by Repo Age Cohort — CI vs No CI",
            x="Repository Age Cohort",y="RQI (1–5)",color=NULL) +
-      theme_minimal(base_size=13) + theme(plot.title=element_text(face="bold",hjust=0.5))
+      theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) + theme(plot.title=element_text(face="bold",hjust=0.5))
   })
   
   output$cohort_test_plot <- renderPlot({
@@ -1052,7 +1052,7 @@ server <- function(input, output) {
       scale_color_manual(values=c("Has Tests"="#33A02C","No Tests"="#B2DF8A")) +
       labs(title="Mean RQI by Repo Age Cohort — Tests vs No Tests",
            x="Repository Age Cohort",y="RQI (1–5)",color=NULL) +
-      theme_minimal(base_size=13) + theme(plot.title=element_text(face="bold",hjust=0.5))
+      theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) + theme(plot.title=element_text(face="bold",hjust=0.5))
   })
   
   output$bio_cohort_plot <- renderPlot({
@@ -1072,7 +1072,7 @@ server <- function(input, output) {
       scale_fill_manual(values=c("CI Coverage"="#1F78B4","Test Coverage"="#33A02C")) +
       labs(title="Bioinformatics: CI and Test Coverage by Age Cohort",
            x="Repository Age Cohort",y="Coverage (%)",fill=NULL) +
-      theme_minimal(base_size=13) + theme(plot.title=element_text(face="bold",hjust=0.5))
+      theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) + theme(plot.title=element_text(face="bold",hjust=0.5))
   })
   
   output$cohort_combined_plot <- renderPlot({
@@ -1090,9 +1090,9 @@ server <- function(input, output) {
                 se_z=sd(z_normalized_1to5,na.rm=TRUE)/sqrt(n()), n=n(), .groups="drop") %>%
       mutate(test_label=ifelse(tests_present==1,"Has Tests","No Tests"))
     
-    base_theme <- theme_minimal(base_size=13) +
+    base_theme <- theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) +
       theme(plot.title=element_text(face="bold",hjust=0.5),
-            axis.text.x=element_text(angle=20,hjust=1),
+            axis.text.x=element_text(angle=20,hjust=1,size=18),
             legend.title=element_blank())
     
     p_ci <- ggplot(cohort_ci_s, aes(x=age_cohort,y=mean_z,color=ci_label,group=ci_label)) +
@@ -1111,7 +1111,7 @@ server <- function(input, output) {
     
     (p_ci | p_tests) +
       plot_annotation(title="Mean RQI by Repository Age Cohort", tag_levels="A",
-                      theme=theme(plot.title=element_text(face="bold",hjust=0.5,size=16))) +
+                      theme=theme(plot.title=element_text(face="bold",hjust=0.5,size=24))) +
       plot_layout(guides="collect") &
       theme(legend.position="bottom")
   })
@@ -1139,7 +1139,7 @@ server <- function(input, output) {
         coord_flip() +
         labs(title=paste0(title_prefix,"Mean RQI by Primary Language (n≥",min_n_use,")"),
              x=NULL,y="Mean RQI (1–5)") +
-        theme_minimal(base_size=13)
+        theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16))
       
     } else if (input$lang_split == "tests") {
       smry <- df %>% group_by(language,tests_present) %>%
@@ -1155,7 +1155,7 @@ server <- function(input, output) {
                           labels=c("No Tests","Has Tests")) +
         labs(title=paste0(title_prefix,"Mean RQI by Primary Language (split by Testing) — n≥", min_n_use),
              x=NULL,y="Mean RQI (1–5)",fill="Tests Present") +
-        theme_minimal(base_size=13)
+        theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16))
       
     } else if (input$lang_split == "ci") {
       smry <- df %>% group_by(language,ci_present) %>%
@@ -1171,7 +1171,7 @@ server <- function(input, output) {
                           labels=c("No CI","Has CI")) +
         labs(title=paste0(title_prefix,"Mean RQI by Primary Language (split by CI) — n≥", min_n_use),
              x=NULL,y="Mean RQI (1–5)",fill="CI Present") +
-        theme_minimal(base_size=13)
+        theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16))
       
     } else {
       smry <- df %>%
@@ -1191,7 +1191,7 @@ server <- function(input, output) {
         coord_flip() +
         labs(title=paste0(title_prefix,"Mean RQI by Primary Language (CI/Tests buckets) — n≥", min_n_use),
              x=NULL,y="Mean RQI (1–5)",fill="QA Bucket") +
-        theme_minimal(base_size=13)
+        theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16))
     }
   })
   
@@ -1223,7 +1223,7 @@ server <- function(input, output) {
       labs(title="Odds Ratios: Predictors of Repository Activity",
            subtitle="Outcome: committed within last 365 days  |  OR > 1 = higher odds of being active",
            x="Odds Ratio (±95% CI)",y=NULL,color="Significance") +
-      theme_minimal(base_size=13) +
+      theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) +
       theme(plot.title=element_text(face="bold",hjust=0.5),
             plot.subtitle=element_text(hjust=0.5,color="gray40"))
   })
@@ -1247,9 +1247,9 @@ server <- function(input, output) {
                                  "CI Only"="#A6CEE3","CI + Tests"="#1F78B4")) +
       labs(title="Repository Activity Rate by CI/Test Presence and Domain",
            x=NULL,y="Active Repos (%)",fill=NULL) +
-      theme_minimal(base_size=13) +
+      theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) +
       theme(plot.title=element_text(face="bold",hjust=0.5),
-            axis.text.x=element_text(angle=30,hjust=1),
+            axis.text.x=element_text(angle=30,hjust=1,size=18),
             legend.position="none")
   })
   
@@ -1280,7 +1280,7 @@ server <- function(input, output) {
         geom_point(color="#1F78B4",size=2) +
         coord_cartesian(ylim=c(0,NA)) +
         labs(title="Mean Citation Count vs Repository Quality",x="RQI (1–5)",y="Mean Citations") +
-        theme_minimal(base_size=13)+theme(plot.title=element_text(face="bold",hjust=0.5))
+        theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16))+theme(plot.title=element_text(face="bold",hjust=0.5))
       
     } else if (input$cit_plot == "median_loess") {
       dat <- craw %>% mutate(rqi_bin=round(z_normalized_1to5*2)/2) %>%
@@ -1291,7 +1291,7 @@ server <- function(input, output) {
         geom_point(color="#1F78B4",size=2) +
         coord_cartesian(ylim=c(0,NA)) +
         labs(title="Median Citation Count vs Repository Quality",x="RQI (1–5)",y="Median Citations") +
-        theme_minimal(base_size=13)+theme(plot.title=element_text(face="bold",hjust=0.5))
+        theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16))+theme(plot.title=element_text(face="bold",hjust=0.5))
       
     } else if (input$cit_plot == "violin") {
       dat <- craw %>% mutate(rqi_bin=factor(round(z_normalized_1to5*2)/2))
@@ -1302,7 +1302,7 @@ server <- function(input, output) {
         scale_fill_viridis_d(option="plasma") +
         labs(title="Citation Distribution by RQI Bin",
              x="RQI (0.5 intervals)",y="log(Citations + 1)") +
-        theme_minimal(base_size=13)+theme(legend.position="none",plot.title=element_text(face="bold",hjust=0.5))
+        theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16))+theme(legend.position="none",plot.title=element_text(face="bold",hjust=0.5))
       
     } else if (input$cit_plot == "mean_bar") {
       dat <- craw %>% mutate(rqi_bin = round(z_normalized_1to5*2)/2)
@@ -1310,7 +1310,7 @@ server <- function(input, output) {
         stat_summary(fun="mean", geom="bar", fill="#1F78B4", alpha=0.8, width=0.4) +
         coord_cartesian(ylim=c(0,NA)) +
         labs(title="Mean Citation Count by RQI Bin", x="RQI (1–5)", y="Mean Citation Count") +
-        theme_minimal(base_size=13) + theme(plot.title=element_text(face="bold",hjust=0.5))
+        theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) + theme(plot.title=element_text(face="bold",hjust=0.5))
       
     } else if (input$cit_plot == "bar_lh") {
       grp <- craw %>% filter(!is.na(z_normalized_1to5)) %>%
@@ -1328,7 +1328,7 @@ server <- function(input, output) {
         geom_text(data=ann,aes(x=(x+xend)/2,y=y+step*0.1,label=label),inherit.aes=FALSE,size=4) +
         scale_fill_manual(values=c("Low"="#D73027","High"="#1A9850")) +
         labs(title="Median Citations by Quality Group",x="RQI Group",y="Median Citations") +
-        theme_minimal(base_size=13)+theme(legend.position="none",plot.title=element_text(face="bold",hjust=0.5))
+        theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16))+theme(legend.position="none",plot.title=element_text(face="bold",hjust=0.5))
       
     } else if (input$cit_plot == "bar_bins") {
       grp <- craw %>% filter(!is.na(z_normalized_1to5)) %>%
@@ -1344,7 +1344,7 @@ server <- function(input, output) {
         geom_text(aes(label=round(median_cit,1)),vjust=-0.5,size=4) +
         scale_fill_manual(values=c("1-2"="#FC8D59","2-3"="#FEE08B","3-4"="#91CF60","4-5"="#1A9850")) +
         labs(title="Median Citations by RQI Bin",x="RQI Score Bin",y="Median Citations") +
-        theme_minimal(base_size=13)+theme(legend.position="none",plot.title=element_text(face="bold",hjust=0.5))
+        theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16))+theme(legend.position="none",plot.title=element_text(face="bold",hjust=0.5))
       if (nrow(all_pairs) > 0) {
         p <- p +
           geom_segment(data=all_pairs,aes(x=x,xend=xend,y=y,yend=y),inherit.aes=FALSE,linewidth=0.5) +
@@ -1383,9 +1383,9 @@ server <- function(input, output) {
         scale_fill_manual(values=c("Low"="#D73027","High"="#1A9850")) +
         labs(title="Median Citations by RQI Bin", subtitle=subtitle_str,
              x="RQI Score Bin", y="Median Citations", fill="Quality Group") +
-        theme_minimal(base_size=13) +
+        theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) +
         theme(plot.title=element_text(face="bold",hjust=0.5),
-              plot.subtitle=element_text(hjust=0.5,color="gray40",size=10),
+              plot.subtitle=element_text(hjust=0.5,color="gray40",size=16),
               legend.position="bottom")
       if (nrow(all_pairs) > 0) {
         p <- p +
@@ -1422,9 +1422,9 @@ server <- function(input, output) {
         scale_fill_manual(values=c("Low"="#D73027","High"="#1A9850")) +
         labs(title="Median Citation Count by RQI Bin (Published Repositories)",
              subtitle=subtitle_str, x="RQI Score Bin", y="Median Citation Count", fill="Quality Group") +
-        theme_minimal(base_size=16) +
+        theme_minimal(base_size=22) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) +
         theme(plot.title=element_text(face="bold",hjust=0.5),
-              plot.subtitle=element_text(hjust=0.5,color="gray40",size=12),
+              plot.subtitle=element_text(hjust=0.5,color="gray40",size=16),
               legend.position="bottom")
       if (nrow(all_pairs) > 0) {
         p <- p +
@@ -1444,7 +1444,7 @@ server <- function(input, output) {
         coord_cartesian(ylim=c(0,quantile(dat$citation_count,0.95))) +
         labs(title="Mean Citations by CI Presence",
              subtitle=paste("t-test p =",round(t_r$p.value,4)),x=NULL,y="Citation Count") +
-        theme_minimal(base_size=13)+theme(legend.position="none",plot.title=element_text(face="bold",hjust=0.5))
+        theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16))+theme(legend.position="none",plot.title=element_text(face="bold",hjust=0.5))
       
     } else if (input$cit_plot == "pub_bar") {
       # Uses citations_raw (not craw) — citation_count is only populated for
@@ -1467,7 +1467,7 @@ server <- function(input, output) {
         scale_fill_manual(values=c("Published"="#1F78B4","Not Published"="#A6CEE3")) +
         coord_cartesian(ylim=c(0,sig_y*1.15)) +
         labs(title="Median RQI by Publication Status (Bioinformatics)", x=NULL, y="Median RQI") +
-        theme_minimal(base_size=13) +
+        theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) +
         theme(legend.position="none", plot.title=element_text(face="bold",hjust=0.5))
       
     } else if (input$cit_plot == "pub_violin") {
@@ -1492,7 +1492,7 @@ server <- function(input, output) {
         scale_color_manual(values=c("Published"="#1F78B4","Not Published"="#A6CEE3")) +
         coord_cartesian(ylim=c(0,sig_y*1.12)) +
         labs(title="RQI Distribution by Publication Status (Bioinformatics)", x=NULL, y="RQI (1–5)") +
-        theme_minimal(base_size=13) +
+        theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) +
         theme(legend.position="none", plot.title=element_text(face="bold",hjust=0.5))
       
     } else if (input$cit_plot == "fig5a") {
@@ -1540,9 +1540,9 @@ server <- function(input, output) {
         scale_y_continuous(limits=c(1,5.3), breaks=1:5) +
         labs(title="RQI and Components by Publication Status (Bioinformatics)",
              subtitle="Components scaled 1–5", x=NULL, y="Score (1–5)") +
-        theme_minimal(base_size=13) +
-        theme(plot.title=element_text(face="bold",hjust=0.5,size=15),
-              plot.subtitle=element_text(hjust=0.5,color="grey40",size=10),
+        theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) +
+        theme(plot.title=element_text(face="bold",hjust=0.5,size=24),
+              plot.subtitle=element_text(hjust=0.5,color="grey40",size=16),
               panel.grid.major.x=element_blank(), legend.position="bottom", legend.title=element_blank()) +
         guides(fill=guide_legend(override.aes=list(shape=c(21,22,22,22), size=4, color="black", stroke=0.6)))
       
@@ -1557,7 +1557,7 @@ server <- function(input, output) {
         scale_color_viridis_c(name="Repo Age (years)", option="plasma") +
         labs(title="Citation Count Explained by RQI and Repository Age",
              x="RQI (1–5)", y="log(Citation Count + 1)") +
-        theme_minimal(base_size=13) + theme(plot.title=element_text(face="bold",hjust=0.5))
+        theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) + theme(plot.title=element_text(face="bold",hjust=0.5))
       
     } else if (input$cit_plot == "scatter_lm") {
       dat <- craw %>%
@@ -1569,7 +1569,7 @@ server <- function(input, output) {
                     alpha=0.15,linewidth=1.2,se=TRUE) +
         labs(title="Citation Count vs Repository Quality Index",
              x="RQI (1–5)",y="log(Citations + 1)") +
-        theme_minimal(base_size=13)+theme(plot.title=element_text(face="bold",hjust=0.5))
+        theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16))+theme(plot.title=element_text(face="bold",hjust=0.5))
     }
   })
   
@@ -1617,7 +1617,7 @@ server <- function(input, output) {
         scale_y_continuous(limits=c(0,sig_y*1.12)) +
         labs(title="Median RQI by Funding Status (Bioinformatics)",
              subtitle="Wilcoxon rank-sum test",x=NULL,y="Median RQI (1–5)") +
-        theme_minimal(base_size=13) +
+        theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) +
         theme(legend.position="none",plot.title=element_text(face="bold",hjust=0.5),
               plot.subtitle=element_text(hjust=0.5,color="grey40"))
       
@@ -1636,8 +1636,8 @@ server <- function(input, output) {
         scale_x_continuous(name="Developer Award Amount (log₁₀ USD)",
                            labels=function(x) paste0("$",format(10^x,big.mark=",",scientific=FALSE))) +
         labs(title="RQI vs Developer Award Amount (Bioinformatics)", subtitle=sub, y="RQI (1–5)") +
-        theme_minimal(base_size=13) +
-        theme(plot.title=element_text(face="bold",hjust=0.5), plot.subtitle=element_text(hjust=0.5,color="grey40",size=10))
+        theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) +
+        theme(plot.title=element_text(face="bold",hjust=0.5), plot.subtitle=element_text(hjust=0.5,color="grey40",size=16))
       
     } else if (input$fund_plot == "lm_org_bio") {
       lm_data <- funding_df %>%
@@ -1654,8 +1654,8 @@ server <- function(input, output) {
         scale_x_continuous(name="Total Organization Award Amount (log₁₀ USD)",
                            labels=function(x) paste0("$",format(10^x,big.mark=",",scientific=FALSE))) +
         labs(title="RQI vs Organization Award Amount (Bioinformatics)", subtitle=sub, y="RQI (1–5)") +
-        theme_minimal(base_size=13) +
-        theme(plot.title=element_text(face="bold",hjust=0.5), plot.subtitle=element_text(hjust=0.5,color="grey40",size=10))
+        theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) +
+        theme(plot.title=element_text(face="bold",hjust=0.5), plot.subtitle=element_text(hjust=0.5,color="grey40",size=16))
       
     } else if (input$fund_plot == "lm_dev_all") {
       lm_data <- funding_df %>%
@@ -1671,8 +1671,8 @@ server <- function(input, output) {
         scale_x_continuous(name="Developer Award Amount (log₁₀ USD)",
                            labels=function(x) paste0("$",format(10^x,big.mark=",",scientific=FALSE))) +
         labs(title="RQI vs Developer Award Amount (All Domains)", subtitle=sub, y="RQI (1–5)") +
-        theme_minimal(base_size=13) +
-        theme(plot.title=element_text(face="bold",hjust=0.5), plot.subtitle=element_text(hjust=0.5,color="grey40",size=10))
+        theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) +
+        theme(plot.title=element_text(face="bold",hjust=0.5), plot.subtitle=element_text(hjust=0.5,color="grey40",size=16))
       
     } else if (input$fund_plot == "lm_org_all") {
       lm_data <- funding_df %>%
@@ -1688,8 +1688,8 @@ server <- function(input, output) {
         scale_x_continuous(name="Total Organization Award Amount (log₁₀ USD)",
                            labels=function(x) paste0("$",format(10^x,big.mark=",",scientific=FALSE))) +
         labs(title="RQI vs Organization Award Amount (All Domains)", subtitle=sub, y="RQI (1–5)") +
-        theme_minimal(base_size=13) +
-        theme(plot.title=element_text(face="bold",hjust=0.5), plot.subtitle=element_text(hjust=0.5,color="grey40",size=10))
+        theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) +
+        theme(plot.title=element_text(face="bold",hjust=0.5), plot.subtitle=element_text(hjust=0.5,color="grey40",size=16))
       
     } else {
       # fig5b_bio (bioinformatics) or fig_all (all domains): layered RQI+component violins
@@ -1750,8 +1750,8 @@ server <- function(input, output) {
         scale_fill_manual(values=fill_values, breaks=c("RQI","Recency","Activity","Popularity"), name=NULL) +
         scale_y_continuous(limits=c(1,5.3), breaks=1:5) +
         labs(title=title_str, subtitle=subtitle_str, x=NULL, y="Score (1–5)") +
-        theme_minimal(base_size=13) +
-        theme(plot.title=element_text(face="bold",hjust=0.5,size=15),
+        theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) +
+        theme(plot.title=element_text(face="bold",hjust=0.5,size=24),
               plot.subtitle=element_text(hjust=0.5,color="grey40",size=9),
               panel.grid.major.x=element_blank(), legend.position="bottom", legend.title=element_blank()) +
         guides(fill=guide_legend(override.aes=list(shape=c(21,22,22,22), size=4, color="black", stroke=0.6)))
