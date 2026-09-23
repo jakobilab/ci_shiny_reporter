@@ -11,66 +11,9 @@ if (length(missing_packages) > 0) install.packages(missing_packages)
 lapply(packages, library, character.only = TRUE)
 
 
-# ── Data Loading ──────────────────────────────────────────────────────────────
-read_and_fix <- function(path, type_label) {
-  read_csv(path, show_col_types = FALSE) %>%
-    mutate(across(is.character, ~na_if(.x, ""))) %>%
-    mutate(type = type_label) %>%
-    mutate(across(where(is.logical) | where(is.character), as.character))
-}
 
-open_source  <- rbind(read_and_fix("open_source_repos_quality.csv", "open_source"),
-                      read_and_fix("open_source_repos_2__2.csv",    "open_source"))
-bioinfo      <- rbind(read_and_fix("bioinformatics_repos_quality.csv", "bioinformatics"),
-                      read_and_fix("bioinformatics_repos_2__2.csv",    "bioinformatics"))
-astro        <- rbind(read_and_fix("astrophysics_repos_quality.csv", "astrophysics"),
-                      read_and_fix("astrophysics_repos_2__2.csv",    "astrophysics"))
-swdev        <- rbind(read_and_fix("software_engineering_repos_quality.csv", "software_engineering"),
-                      read_and_fix("software_engineering_repos_2__2.csv",    "software_engineering"))
-imagerec     <- rbind(read_and_fix("image_recognition_repos_quality.csv", "image_recognition"),
-                      read_and_fix("image_recognition_repos_2__2.csv",    "image_recognition"))
-
-repo <- rbind(open_source, bioinfo, astro, swdev, imagerec)
-repo$watchers             <- as.numeric(repo$watchers)
-repo$stars                <- as.numeric(repo$stars)
-repo$forks                <- as.numeric(repo$forks)
-repo$days_since_last_commit <- as.numeric(repo$days_since_last_commit)
-repo$total_issues         <- as.numeric(repo$total_issues)
-repo$closed_issues        <- as.numeric(repo$closed_issues)
-repo$commit_count         <- as.numeric(repo$commit_count)
-repo$open_issues          <- as.numeric(repo$open_issues)
-
-repo <- repo %>%
-  filter(days_since_last_commit >= 0) %>%
-  filter(commit_count > 4) %>%
-  filter(total_issues > 4)
-
-
-# ── RQI Computation (source of truth: Rmd) ───────────────────────────────────
-repo <- repo %>%
-  filter(is.na(error) | error == "") %>%
-  filter(!(is.na(has_tests) | has_tests == "")) %>%
+repo <- read_csv("repos_with_scores_filtered.csv", show_col_types = FALSE) %>%
   mutate(
-    backlog_health = 1 / (1 + as.numeric(median_issue_days_open)),
-    days_since_last_commit = ifelse(is.na(days_since_last_commit),
-                                    max(days_since_last_commit, na.rm = TRUE),
-                                    days_since_last_commit),
-    popularity    = log1p(stars + forks + watchers),
-    ci_present    = ifelse(has_CI    %in% c(TRUE, "True", "Has CI"), 1, 0),
-    tests_present = ifelse(has_tests %in% c(TRUE, "True"), 1, 0)
-  ) %>%
-  mutate(
-    recency_z    = scale(-days_since_last_commit),
-    issue_z      = scale(backlog_health),
-    pop_z        = scale(popularity),
-    z_score_mean = rowMeans(cbind(recency_z, issue_z, pop_z), na.rm = TRUE),
-    z_winsor     = pmax(pmin(z_score_mean,
-                             quantile(z_score_mean, 0.99, na.rm = TRUE)),
-                        quantile(z_score_mean, 0.01, na.rm = TRUE)),
-    z_normalized_1to5 = scales::rescale(z_winsor, to = c(1, 5))
-  ) %>%
-  mutate(
-    recency_score = scales::rescale(-days_since_last_commit, to = c(0, 100)),
     repo_age_days = as.numeric(repo_age_days),
     commit_count  = as.numeric(commit_count),
     is_active     = as.integer(days_since_last_commit <= 365),
@@ -87,8 +30,8 @@ repo <- repo %>%
 coverage_data <- repo %>%
   mutate(
     quality_group = factor(case_when(
-      z_normalized_1to5 >= 4 ~ "High (>=4*)",
-      z_normalized_1to5 <= 2 ~ "Low (<=2*)",
+      final_score_1to5 >= 4 ~ "High (>=4*)",
+      final_score_1to5 <= 2 ~ "Low (<=2*)",
       TRUE ~ "Mid (2–4*)"
     ), levels = c("Low (<=2*)", "Mid (2–4*)", "High (>=4*)"))
   )
@@ -116,7 +59,7 @@ rescale_metrics <- function(df) {
 
 top100_avg <- repo %>%
   group_by(type) %>%
-  arrange(desc(z_normalized_1to5)) %>%
+  arrange(desc(final_score_1to5)) %>%
   slice_head(n = 100) %>%
   summarise(recency = mean(recency_score, na.rm=TRUE),
             backlog_health = mean(backlog_health, na.rm=TRUE),
@@ -125,7 +68,7 @@ top100_avg <- repo %>%
 
 bottom100_avg <- repo %>%
   group_by(type) %>%
-  arrange(z_normalized_1to5) %>%
+  arrange(final_score_1to5) %>%
   slice_head(n = 100) %>%
   summarise(recency = mean(recency_score, na.rm=TRUE),
             backlog_health = mean(backlog_health, na.rm=TRUE),
@@ -134,7 +77,7 @@ bottom100_avg <- repo %>%
 
 median100_avg <- repo %>%
   group_by(type) %>%
-  arrange(z_normalized_1to5) %>%
+  arrange(final_score_1to5) %>%
   slice(round(n()/2 - 49) : round(n()/2 + 50)) %>%
   summarise(recency = mean(recency_score, na.rm=TRUE),
             backlog_health = mean(backlog_health, na.rm=TRUE),
@@ -151,7 +94,7 @@ all_by_type_radar <- repo %>%
 
 top20_by_type_radar <- repo %>%
   group_by(type) %>%
-  arrange(desc(z_normalized_1to5)) %>%
+  arrange(desc(final_score_1to5)) %>%
   slice_head(n = 20) %>%
   summarise(recency = mean(recency_score, na.rm=TRUE),
             backlog_health = mean(backlog_health, na.rm=TRUE),
@@ -160,7 +103,7 @@ top20_by_type_radar <- repo %>%
 
 bottom20_by_type_radar <- repo %>%
   group_by(type) %>%
-  arrange(z_normalized_1to5) %>%
+  arrange(final_score_1to5) %>%
   slice_head(n = 20) %>%
   summarise(recency = mean(recency_score, na.rm=TRUE),
             backlog_health = mean(backlog_health, na.rm=TRUE),
@@ -206,12 +149,6 @@ build_sig_brackets <- function(data, group_col, value_col) {
   do.call(rbind, out)
 }
 
-# ── Generic helper: rescale a z-score vector to 1–5 (Rmd scale_1to5) ──────────
-scale_1to5 <- function(x) {
-  rng <- range(x, na.rm = TRUE)
-  1 + 4 * (x - rng[1]) / (rng[2] - rng[1])
-}
-
 
 require_two_groups <- function(g, label = "group") {
   validate(need(length(g) > 0,
@@ -227,7 +164,7 @@ require_two_groups <- function(g, label = "group") {
 
 
 # ── ANOVA / Tukey ─────────────────────────────────────────────────────────────
-anova_result <- aov(z_normalized_1to5 ~ type, data = repo)
+anova_result <- aov(final_score_1to5 ~ type, data = repo)
 Tukey_result <- TukeyHSD(anova_result)
 
 tukey_df <- as.data.frame(Tukey_result$type)
@@ -239,8 +176,8 @@ tukey_sig <- tukey_df %>%
 
 repo_summary <- repo %>%
   group_by(type) %>%
-  summarise(mean = mean(z_normalized_1to5, na.rm=TRUE),
-            sd   = sd(z_normalized_1to5, na.rm=TRUE),
+  summarise(mean = mean(final_score_1to5, na.rm=TRUE),
+            sd   = sd(final_score_1to5, na.rm=TRUE),
             n    = n(),
             se   = sd / sqrt(n),
             ci_lower = mean - qt(0.975, df=n-1)*se,
@@ -254,22 +191,22 @@ within_type_tests <- repo %>%
     ci_p = ifelse(length(unique(ci_present)) > 1 &
                     sum(ci_present==0,na.rm=TRUE)>=2 &
                     sum(ci_present==1,na.rm=TRUE)>=2,
-                  t.test(z_normalized_1to5 ~ ci_present)$p.value, NA),
+                  t.test(final_score_1to5 ~ ci_present)$p.value, NA),
     tests_p = ifelse(length(unique(tests_present)) > 1 &
                        sum(tests_present==0,na.rm=TRUE)>=2 &
                        sum(tests_present==1,na.rm=TRUE)>=2,
-                     t.test(z_normalized_1to5 ~ tests_present)$p.value, NA),
-    mean_ci_yes   = mean(z_normalized_1to5[ci_present==1],    na.rm=TRUE),
-    mean_ci_no    = mean(z_normalized_1to5[ci_present==0],    na.rm=TRUE),
-    mean_tests_yes = mean(z_normalized_1to5[tests_present==1], na.rm=TRUE),
-    mean_tests_no  = mean(z_normalized_1to5[tests_present==0], na.rm=TRUE),
+                     t.test(final_score_1to5 ~ tests_present)$p.value, NA),
+    mean_ci_yes   = mean(final_score_1to5[ci_present==1],    na.rm=TRUE),
+    mean_ci_no    = mean(final_score_1to5[ci_present==0],    na.rm=TRUE),
+    mean_tests_yes = mean(final_score_1to5[tests_present==1], na.rm=TRUE),
+    mean_tests_no  = mean(final_score_1to5[tests_present==0], na.rm=TRUE),
     .groups = "drop"
   )
 
 
 # ── Language processing ───────────────────────────────────────────────────────
 lang_long <- repo %>%
-  select(repo, type, z_normalized_1to5, tests_present, ci_present, languages) %>%
+  select(repo, type, final_score_1to5, tests_present, ci_present, languages) %>%
   filter(!is.na(languages), languages != "") %>%
   mutate(languages = str_replace_all(languages, "\\s+", " ")) %>%
   separate_rows(languages, sep = ",\\s*") %>%
@@ -287,7 +224,7 @@ lang_primary <- lang_long %>%
 min_n <- 20
 lang_summary_filt <- lang_primary %>%
   group_by(language) %>%
-  summarise(n = n(), mean_rating = mean(z_normalized_1to5, na.rm=TRUE), .groups="drop") %>%
+  summarise(n = n(), mean_rating = mean(final_score_1to5, na.rm=TRUE), .groups="drop") %>%
   filter(n >= min_n)
 
 # Bioinformatics-only language summary (Rmd Figs S15–S17 use a lower n threshold)
@@ -295,22 +232,22 @@ min_n_bio <- 10
 bio_lang_summary_filt <- lang_primary %>%
   filter(type == "bioinformatics") %>%
   group_by(language) %>%
-  summarise(n = n(), mean_rating = mean(z_normalized_1to5, na.rm=TRUE), .groups="drop") %>%
+  summarise(n = n(), mean_rating = mean(final_score_1to5, na.rm=TRUE), .groups="drop") %>%
   filter(n >= min_n_bio)
 
 
 # ── Cohort summaries ──────────────────────────────────────────────────────────
 cohort_ci_summary <- repo %>%
   group_by(age_cohort, ci_present) %>%
-  summarise(mean_z = mean(z_normalized_1to5,na.rm=TRUE),
-            se_z   = sd(z_normalized_1to5,na.rm=TRUE)/sqrt(n()),
+  summarise(mean_z = mean(final_score_1to5,na.rm=TRUE),
+            se_z   = sd(final_score_1to5,na.rm=TRUE)/sqrt(n()),
             n=n(), .groups="drop") %>%
   mutate(ci_label = ifelse(ci_present==1,"Has CI","No CI"))
 
 cohort_test_summary <- repo %>%
   group_by(age_cohort, tests_present) %>%
-  summarise(mean_z = mean(z_normalized_1to5,na.rm=TRUE),
-            se_z   = sd(z_normalized_1to5,na.rm=TRUE)/sqrt(n()),
+  summarise(mean_z = mean(final_score_1to5,na.rm=TRUE),
+            se_z   = sd(final_score_1to5,na.rm=TRUE)/sqrt(n()),
             n=n(), .groups="drop") %>%
   mutate(test_label = ifelse(tests_present==1,"Has Tests","No Tests"))
 
@@ -318,7 +255,7 @@ cohort_test_summary <- repo %>%
 # ── Summary tables (Rmd Table 1 / Table S1) ───────────────────────────────────
 summary_tbl_type <- repo %>%
   group_by(type) %>%
-  summarise(mean_rqi        = mean(z_normalized_1to5, na.rm = TRUE),
+  summarise(mean_rqi        = mean(final_score_1to5, na.rm = TRUE),
             mean_recency    = mean(recency_score,     na.rm = TRUE),
             mean_backlog    = mean(backlog_health,    na.rm = TRUE),
             mean_popularity = mean(popularity,        na.rm = TRUE),
@@ -347,6 +284,17 @@ has_citations <- file.exists(cit_file)
 if (has_citations) {
   citations_raw <- read_csv(cit_file, show_col_types = FALSE) %>%
     distinct(repo, .keep_all = TRUE) %>%
+    # Drop any RQI columns already in this file (e.g. stale z-score-based
+    # values from before the switch to anchor-point interpolation) and join
+    # in the current scores from `repo`, keyed on repo.
+    select(-any_of(c("final_score_1to5", "recency_score_1to5",
+                     "issue_score_1to5", "pop_score_1to5",
+                     "z_normalized_1to5", "recency_z", "issue_z", "pop_z"))) %>%
+    left_join(
+      repo %>% select(repo, final_score_1to5, recency_score_1to5,
+                      issue_score_1to5, pop_score_1to5),
+      by = "repo"
+    ) %>%
     mutate(
       
       doi_is_paper = !is.na(doi) &
@@ -394,7 +342,8 @@ if (has_funding) {
     )
   
   funding_df <- nih %>%
-    left_join(repo %>% select(repo, z_normalized_1to5, recency_z, issue_z, pop_z, type),
+    left_join(repo %>% select(repo, final_score_1to5, recency_score_1to5,
+                              issue_score_1to5, pop_score_1to5, type),
               by = "repo") %>%
     mutate(
       funding_group = factor(
@@ -415,27 +364,168 @@ if (has_funding) {
 # UI
 # ══════════════════════════════════════════════════════════════════════════════
 ui <- fluidPage(
+  title = "Continuous Integration and Software Quality in Scientific Software",
   theme = shinytheme("yeti"),
-  titlePanel(
-    windowTitle = "CI & Software Quality in Scientific Software",
-    title = tags$div(
-      style = "line-height: 1.35; padding: 6px 0;",
-      tags$h2(
-        "Continuous Integration and Software Quality in Scientific Software: A Large-Scale Empirical Analysis of GitHub Repositories",
-        style = "font-weight: 700; font-size: 26px; margin-bottom: 6px;"
-      ),
-      tags$div(
-        style = "font-size: 17px; color: #555;",
-        tags$a(href = "https://doi.org/10.XXXX/XXXXXXX", target = "_blank",
-               style = "color: #555; text-decoration: underline;", "DOI: 10.XXXX/XXXXXXX"),
-        tags$span(" \u2003|\u2003 ", style = "color:#aaa;"),
-        tags$a(href = "https://paper-link.example.com", target = "_blank",
-               icon("file-text"), "Read the paper"),
-        tags$span(" \u2003|\u2003 ", style = "color:#aaa;"),
-        tags$a(href = "https://jakobilab.org", target = "_blank",
-               icon("globe"), "jakobilab.org")
-      )
-    )
+  
+  tags$head(
+    tags$meta(name = "viewport", content = "width=device-width, initial-scale=1"),
+    tags$style(HTML("
+      :root {
+        --az-red: #AB0520;
+        --az-red-dark: #8B0015;
+        --az-blue: #0C234B;
+        --az-oasis: #378DBD;
+        --az-azurite: #1E5288;
+        --az-warmgray: #F4EDE5;
+        --az-coolgray: #E2E9EB;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        background: var(--az-warmgray);
+        color: var(--az-blue);
+        /* Reserve space at the bottom so the fixed footer never covers content.
+           This only has a visible effect because body no longer has a hard
+           height:100% — it uses min-height instead, so real content height
+           (plus this padding) can push the page taller than the viewport. */
+        padding-bottom: 150px;
+      }
+
+      .container-fluid {
+        margin-right: auto;
+        margin-left: auto;
+        padding-left: 15px;
+        padding-right: 15px;
+        padding-bottom: 40px;
+      }
+
+      /* ── Header (bleeds edge-to-edge out of the Bootstrap container) ── */
+      .site-header {
+        background: #fff;
+        border-bottom: 4px solid var(--az-red);
+        padding: 18px 40px;
+        margin: -20px -15px 24px -15px;
+      }
+      .site-header h1 {
+        font-size: 26px;
+        line-height: 1.35;
+        margin: 0 0 6px;
+        font-weight: 700;
+        color: var(--az-blue);
+      }
+      .site-header .subtitle { font-size: 17px; color: #555; }
+      .site-header .subtitle a { color: #555; text-decoration: underline; }
+      .site-header .subtitle a:hover { color: var(--az-red); }
+      .site-header .subtitle .sep { color: #aaa; }
+
+      /* ── Footer (hovers, fixed to the bottom of the viewport) ── */
+      .site-footer {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        width: 100%;
+        box-sizing: border-box;
+        background: var(--az-blue);
+        color: #dfe6ee;
+        padding: 20px 40px;
+        margin: 0;
+        box-shadow: 0 -2px 10px rgba(12, 35, 75, 0.15);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 12px;
+        font-size: 1.2rem;
+        z-index: 1000;
+      }
+      .site-footer a { color: #fff; text-decoration: none; }
+      .site-footer a:hover { text-decoration: underline; }
+      .site-footer .footer-left { font-weight: 700; }
+      .site-footer .footer-links a { margin-left: 28px; }
+
+      /* ── Sidebar ── */
+      .well {
+        background: #fff;
+        border: 1px solid var(--az-coolgray);
+        border-radius: 12px;
+        box-shadow: 0 2px 10px rgba(12, 35, 75, 0.08);
+      }
+
+      /* ── Plot cards ──
+         plotOutput() calls are wrapped in tags$div(class = 'plot-card', ...)
+         so this padding lives OUTSIDE the Shiny-managed plot container.
+         Padding directly on .shiny-plot-output would shrink the box Shiny
+         measures for image sizing without shrinking the rendered plot
+         itself, causing the plot to spill past the card edges. */
+      .plot-card {
+        background: #fff;
+        border-radius: 12px;
+        box-shadow: 0 2px 10px rgba(12, 35, 75, 0.08);
+        padding: 16px;
+        margin-bottom: 22px;
+        overflow: hidden;
+      }
+
+      /* ── Tabs ──
+         Every tab keeps the same font-weight and a transparent 3px top
+         border at all times, so switching tabs never changes their width
+         or the tab bar's height — only color changes on the active tab. */
+      .nav-tabs { border-bottom: 2px solid var(--az-coolgray); }
+      .nav-tabs > li > a {
+        color: var(--az-blue);
+        font-weight: 600;
+        border-top: 3px solid transparent;
+        border-radius: 8px 8px 0 0;
+      }
+      .nav-tabs > li > a:hover {
+        background: var(--az-warmgray);
+        border-top-color: transparent;
+      }
+      .nav-tabs > li.active > a,
+      .nav-tabs > li.active > a:focus,
+      .nav-tabs > li.active > a:hover {
+        color: var(--az-red);
+        background: #fff;
+        border-color: var(--az-coolgray) var(--az-coolgray) #fff;
+        border-top: 3px solid var(--az-red);
+      }
+
+      /* ── Buttons & inputs ── */
+      .btn-default, .btn-primary {
+        background: var(--az-red);
+        border-color: var(--az-red);
+        color: #fff;
+      }
+      .btn-default:hover, .btn-primary:hover,
+      .btn-default:focus, .btn-primary:focus {
+        background: var(--az-red-dark);
+        border-color: var(--az-red-dark);
+        color: #fff;
+      }
+      .form-control:focus, .selectize-input.focus {
+        border-color: var(--az-oasis);
+        box-shadow: 0 0 0 3px rgba(55, 141, 189, 0.25);
+      }
+
+      h4 { color: var(--az-red); font-weight: 700; }
+      a { color: var(--az-azurite); }
+    "))
+  ),
+  
+  tags$div(class = "site-header",
+           tags$h1("Continuous Integration and Software Quality in Scientific Software: A Large-Scale Empirical Analysis of GitHub Repositories"),
+           tags$div(class = "subtitle",
+                    tags$a(href = "https://doi.org/10.XXXX/XXXXXXX", target = "_blank", "DOI: 10.XXXX/XXXXXXX"),
+                    tags$span(" \u2003|\u2003 ", class = "sep"),
+                    tags$a(href = "https://paper-link.example.com", target = "_blank",
+                           icon("file-text"), "Read the paper"),
+                    tags$span(" \u2003|\u2003 ", class = "sep"),
+                    tags$a(href = "https://jakobilab.org", target = "_blank",
+                           icon("globe"), "jakobilab.org")
+           )
   ),
   
   sidebarLayout(
@@ -528,51 +618,51 @@ ui <- fluidPage(
                   # 1 ── Coverage
                   tabPanel("CI & Test Coverage", value = "coverage_tab",
                            h4("CI and Testing Prevalence by Quality Tier"),
-                           plotOutput("test_plot", height = "400px"),
+                           tags$div(class = "plot-card", plotOutput("test_plot", height = "480px")),
                            hr(),
                            h4("Prevalence Regression Across RQI"),
-                           plotOutput("prev_reg_plot", height = "400px")
+                           tags$div(class = "plot-card", plotOutput("prev_reg_plot", height = "480px"))
                   ),
                   
                   # 2 ── Distribution
                   tabPanel("Distribution", value = "distribution_tab",
                            h4("Quality Distribution by Type (stacked)"),
-                           plotOutput("dist_plot", height = "380px"),
+                           tags$div(class = "plot-card", plotOutput("dist_plot", height = "460px")),
                            hr(),
                            h4("Overall Distribution + Q-Q"),
-                           plotOutput("dist_qq_plot", height = "350px"),
+                           tags$div(class = "plot-card", plotOutput("dist_qq_plot", height = "430px")),
                            hr(),
                            h4("Density by Type (faceted)"),
-                           plotOutput("dist_facet_plot", height = "420px")
+                           tags$div(class = "plot-card", plotOutput("dist_facet_plot", height = "520px"))
                   ),
                   
                   # 3 ── ANOVA / Tukey overall
                   tabPanel("ANOVA / Tukey", value = "anova_tab",
                            h4("Bioinformatics vs All — Tukey Significant Pairs"),
-                           plotOutput("bio_tukey_plot", height = "480px")
+                           tags$div(class = "plot-card", plotOutput("bio_tukey_plot", height = "660px"))
                   ),
                   
                   # 4 ── Tukey pairwise comparison
                   tabPanel("Pairwise Comparison", value = "comparison_tab",
                            h4("Tukey HSD Pairwise Comparison"),
-                           plotOutput("tukey_plot", height = "420px")
+                           tags$div(class = "plot-card", plotOutput("tukey_plot", height = "500px"))
                   ),
                   
                   # 5 ── CI & Test impact (overall)
                   tabPanel("CI & Test Impact", value = "impact_tab",
                            fluidRow(
-                             column(6, h4("CI Impact"), plotOutput("ci_impact_plot", height = "380px")),
-                             column(6, h4("Test Impact"), plotOutput("test_impact_plot", height = "380px"))
+                             column(6, h4("CI Impact"), tags$div(class = "plot-card", plotOutput("ci_impact_plot", height = "480px"))),
+                             column(6, h4("Test Impact"), tags$div(class = "plot-card", plotOutput("test_impact_plot", height = "480px")))
                            )
                   ),
                   
                   # 6 ── CI & Test impact by type (faceted)
                   tabPanel("Impact by Type", value = "impact_by_type_tab",
                            h4("CI Presence Effect per Repository Type"),
-                           plotOutput("ci_by_type_plot", height = "500px"),
+                           tags$div(class = "plot-card", plotOutput("ci_by_type_plot", height = "680px")),
                            hr(),
                            h4("Testing Presence Effect per Repository Type"),
-                           plotOutput("test_by_type_plot", height = "500px")
+                           tags$div(class = "plot-card", plotOutput("test_by_type_plot", height = "680px"))
                   ),
                   
                   # 7 ── Radar
@@ -584,31 +674,31 @@ ui <- fluidPage(
                   # 8 ── Age cohort
                   tabPanel("Age Cohorts", value = "cohort_tab",
                            h4("Mean RQI by Age Cohort — CI"),
-                           plotOutput("cohort_ci_plot", height = "360px"),
+                           tags$div(class = "plot-card", plotOutput("cohort_ci_plot", height = "460px")),
                            hr(),
                            h4("Mean RQI by Age Cohort — Testing"),
-                           plotOutput("cohort_test_plot", height = "360px"),
+                           tags$div(class = "plot-card", plotOutput("cohort_test_plot", height = "460px")),
                            hr(),
                            h4("Bioinformatics CI & Test Coverage by Cohort"),
-                           plotOutput("bio_cohort_plot", height = "360px"),
+                           tags$div(class = "plot-card", plotOutput("bio_cohort_plot", height = "460px")),
                            hr(),
                            h4("Combined View (Journal Figure Style)"),
-                           plotOutput("cohort_combined_plot", height = "420px")
+                           tags$div(class = "plot-card", plotOutput("cohort_combined_plot", height = "520px"))
                   ),
                   
                   # 9 ── Language
                   tabPanel("Language", value = "lang_tab",
                            h4("Mean RQI by Primary Language"),
-                           plotOutput("lang_plot", height = "520px")
+                           uiOutput("lang_plot_ui")
                   ),
                   
                   # 10 ── Activity (survival)
                   tabPanel("Activity / Survival", value = "survival_tab",
                            h4("Odds Ratios: Predictors of Repo Activity"),
-                           plotOutput("survival_plot", height = "480px"),
+                           tags$div(class = "plot-card", plotOutput("survival_plot", height = "580px")),
                            hr(),
                            h4("Activity Rate by CI/Test Presence and Domain"),
-                           plotOutput("activity_plot", height = "480px")
+                           tags$div(class = "plot-card", plotOutput("activity_plot", height = "620px"))
                   ),
                   
                   # 11 ── Citations (optional)
@@ -631,6 +721,17 @@ ui <- fluidPage(
                   )
       )
     )
+  ),
+  
+  tags$div(class = "site-footer",
+           tags$div(class = "footer-left",
+                    tags$a(href = "https://jakobilab.org/", target = "_blank", rel = "noopener", "Jakobi Lab")
+           ),
+           tags$div(class = "footer-links",
+                    tags$a(href = "https://github.com/jakobilab/ci_shiny_reporter", target = "_blank", rel = "noopener", "Source code"),
+                    tags$a(href = "https://github.com/jakobilab/integrationStudy", target = "_blank", rel = "noopener", "Continuous Integration Study 2026"),
+                    tags$a(href = "https://phoenixmed.arizona.edu/tcrc", target = "_blank", rel = "noopener", "TCRC")
+           )
   )
 )
 
@@ -668,7 +769,7 @@ server <- function(input, output) {
     ggplot(fs, aes(x=quality_group, y=coverage*100, fill=metric)) +
       geom_col(position=position_dodge(0.6), width=0.6, color="white") +
       geom_text(aes(label=paste0(round(coverage*100,1),"%")),
-                position=position_dodge(0.6), vjust=-0.5, size=3.5) +
+                position=position_dodge(0.6), vjust=-0.5, size=6, fontface="bold") +
       scale_fill_manual(values=c("ci_coverage"="#1F78B4","test_coverage"="#33A02C"),
                         labels=c("Continuous Integration","Testing")) +
       labs(title="CI and Testing Prevalence by Quality Tier",
@@ -681,7 +782,7 @@ server <- function(input, output) {
   output$prev_reg_plot <- renderPlot({
     df <- filtered_repo()
     prev_reg <- df %>%
-      mutate(rqi_bin = round(z_normalized_1to5/0.15)*0.15) %>%
+      mutate(rqi_bin = round(final_score_1to5/0.15)*0.15) %>%
       group_by(rqi_bin) %>%
       summarise(ci_prev   = mean(ci_present==1,    na.rm=TRUE),
                 test_prev = mean(tests_present==1, na.rm=TRUE),
@@ -710,7 +811,7 @@ server <- function(input, output) {
                         labels=c("Continuous Integration","Testing")) +
       scale_size_continuous(range=c(1.5,5), guide="none") +
       labs(title="CI and Testing Prevalence Across Repository Quality",
-           subtitle=subtitle_str, x="RQI (1–5)", y="Prevalence (%)",
+           subtitle=subtitle_str, x="RQI (0–5)", y="Prevalence (%)",
            color="Metric", fill="Metric") +
       theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) +
       theme(plot.title=element_text(face="bold",hjust=0.5),
@@ -722,9 +823,9 @@ server <- function(input, output) {
   output$dist_plot <- renderPlot({
     df <- filtered_repo()
     mean_df <- df %>% group_by(type) %>%
-      summarise(mean_z=mean(z_normalized_1to5,na.rm=TRUE),.groups="drop")
+      summarise(mean_z=mean(final_score_1to5,na.rm=TRUE),.groups="drop")
     
-    ggplot(df, aes(x=z_normalized_1to5, fill=type)) +
+    ggplot(df, aes(x=final_score_1to5, fill=type)) +
       geom_histogram(aes(y=after_stat(count/sum(count))), position="stack",
                      binwidth=0.15, color="white", alpha=0.7) +
       geom_density(aes(y=after_stat(..scaled..), color=type), size=1.1, alpha=0.9) +
@@ -733,7 +834,7 @@ server <- function(input, output) {
       scale_fill_manual(values=type_colors)  +
       scale_color_manual(values=type_colors) +
       labs(title="Comparative Quality Distribution Across Repository Types",
-           x="Normalized (1–5)", y="Density / Proportion",
+           x="Normalized (0–5)", y="Density / Proportion",
            fill="Repository Type", color="Repository Type") +
       theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) +
       theme(legend.position="top", plot.title=element_text(face="bold",hjust=0.5))
@@ -742,17 +843,17 @@ server <- function(input, output) {
   # ── 2b. Overall dist + Q-Q ──────────────────────────────────────────────────
   output$dist_qq_plot <- renderPlot({
     df     <- filtered_repo()
-    z_all  <- df$z_normalized_1to5[!is.na(df$z_normalized_1to5)]
+    z_all  <- df$final_score_1to5[!is.na(df$final_score_1to5)]
     z_samp <- if (length(z_all) > 10000) sample(z_all,10000) else z_all
     
-    p_dist <- ggplot(df, aes(x=z_normalized_1to5)) +
+    p_dist <- ggplot(df, aes(x=final_score_1to5)) +
       geom_histogram(aes(y=after_stat(density)), bins=40,
                      fill="#56B4E9", color="white", alpha=0.8) +
       geom_density(color="red", size=1.1) +
-      geom_vline(aes(xintercept=mean(z_normalized_1to5,na.rm=TRUE)),
+      geom_vline(aes(xintercept=mean(final_score_1to5,na.rm=TRUE)),
                  color="darkblue", linetype="dashed", linewidth=1) +
       labs(title="Overall Distribution of Normalized RQI",
-           x="RQI (1–5)", y="Density") +
+           x="RQI (0–5)", y="Density") +
       theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16))
     
     p_qq <- ggplot(data.frame(z=z_samp), aes(sample=z)) +
@@ -766,14 +867,14 @@ server <- function(input, output) {
   # ── 2c. Density faceted ─────────────────────────────────────────────────────
   output$dist_facet_plot <- renderPlot({
     df <- filtered_repo()
-    ggplot(df, aes(x=z_normalized_1to5, fill=type)) +
+    ggplot(df, aes(x=final_score_1to5, fill=type)) +
       geom_histogram(aes(y=after_stat(density)), bins=30, color="white", alpha=0.7) +
       geom_density(aes(color=type), size=1.1) +
       facet_wrap(~type, ncol=3) +
       scale_fill_manual(values=type_colors) +
       scale_color_manual(values=type_colors) +
       labs(title="Distribution and Density by Repository Type",
-           x="RQI (1–5)", y="Density") +
+           x="RQI (0–5)", y="Density") +
       theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) +
       theme(legend.position="none",
             plot.title=element_text(face="bold",hjust=0.5))
@@ -804,23 +905,26 @@ server <- function(input, output) {
       mutate(other_x=match(other,type_levels), bio_x=bio_x) %>%
       left_join(repo_summary %>% select(type,ci_upper), by=c("other"="type")) %>%
       rename(ci_upper_other=ci_upper) %>%
-      mutate(y=pmax(ci_upper_other,bio_ci_up)+0.05+row_number()*0.12)
+      mutate(y=pmax(ci_upper_other,bio_ci_up)+0.25+row_number()*0.45,
+             sig_label=paste0("p = ",signif(`p adj`,3)))
     
     ggplot(plot_data, aes(x=type, y=mean, fill=type)) +
-      geom_col(alpha=0.85, width=0.65) +
-      geom_errorbar(aes(ymin=ci_lower,ymax=ci_upper), width=0.2) +
+      geom_col(alpha=0.85, width=0.5) +
+      geom_errorbar(aes(ymin=ci_lower,ymax=ci_upper), width=0.15) +
       geom_segment(data=sig_bars,
                    aes(x=bio_x,xend=other_x,y=y,yend=y),
                    inherit.aes=FALSE, linewidth=0.6) +
       geom_text(data=sig_bars,
-                aes(x=(bio_x+other_x)/2,y=y+0.05,label=sig),
+                aes(x=(bio_x+other_x)/2,y=y+0.18,label=sig_label),
                 inherit.aes=FALSE, size=5, fontface="bold") +
       scale_fill_manual(values=col_pal) +
+      scale_x_discrete(expand=expansion(mult=0.18)) +
       labs(x=NULL, y="Mean RQI", title="Bioinformatics vs All Other Categories") +
       theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) +
       theme(legend.position="none",
             axis.text.x=element_text(angle=30,hjust=1,size=18),
-            plot.title=element_text(face="bold",hjust=0.5))
+            plot.title=element_text(face="bold",hjust=0.5,margin=margin(b=16)),
+            plot.margin=margin(t=20,r=20,b=10,l=10))
   })
   
   # ── 4. Pairwise Tukey ───────────────────────────────────────────────────────
@@ -834,8 +938,8 @@ server <- function(input, output) {
                (group1==input$repo_2 & group2==input$repo_1))
     sig_label <- if (nrow(sig_check)>=1) paste0("p = ",signif(as.numeric(sig_check$`p adj`[1]),3)) else "p = ns"
     
-    y_bar  <- max(pair_data$ci_upper,na.rm=TRUE)+0.05
-    y_text <- y_bar+0.03
+    y_bar  <- max(pair_data$ci_upper,na.rm=TRUE)+0.15
+    y_text <- y_bar+0.18
     
     ggplot(pair_data, aes(x=type, y=mean, fill=type)) +
       geom_col(alpha=0.8, width=0.6) +
@@ -856,21 +960,21 @@ server <- function(input, output) {
     smry <- df %>%
       mutate(label=ifelse(.data[[var]]==1, label_vals[2], label_vals[1])) %>%
       group_by(label) %>%
-      summarise(mean_z=mean(z_normalized_1to5,na.rm=TRUE),
-                sd_z=sd(z_normalized_1to5,na.rm=TRUE), n=n(),
+      summarise(mean_z=mean(final_score_1to5,na.rm=TRUE),
+                sd_z=sd(final_score_1to5,na.rm=TRUE), n=n(),
                 se_z=sd_z/sqrt(n), .groups="drop")
     
-    p_val <- if (nrow(smry)==2) t.test(df$z_normalized_1to5 ~ df[[var]])$p.value else NA
+    p_val <- if (nrow(smry)==2) t.test(df$final_score_1to5 ~ df[[var]])$p.value else NA
     sig   <- if (!is.na(p_val)) paste0("p = ",signif(p_val,3)) else ""
     
     ggplot(smry, aes(x=label,y=mean_z,fill=label)) +
-      geom_col(width=0.6,color="white") +
+      geom_col(width=0.55,color="white") +
       geom_errorbar(aes(ymin=mean_z-se_z,ymax=mean_z+se_z),width=0.2) +
-      geom_segment(aes(x=1,xend=2,y=max(mean_z+se_z)+0.05,yend=max(mean_z+se_z)+0.05)) +
-      geom_text(aes(x=1.5,y=max(mean_z+se_z)+0.1,label=sig),
+      geom_segment(aes(x=1,xend=2,y=max(mean_z+se_z)+0.15,yend=max(mean_z+se_z)+0.15)) +
+      geom_text(aes(x=1.5,y=max(mean_z+se_z)+0.3,label=sig),
                 size=5, fontface="bold") +
       scale_fill_manual(values=colors) +
-      labs(title=paste(title_prefix,"Impact on Quality"), x=xlab, y="Mean RQI (1–5)") +
+      labs(title=paste(title_prefix,"Impact on Quality"), x=xlab, y="Mean RQI (0–5)") +
       theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) + theme(legend.position="none")
   }
   
@@ -883,65 +987,71 @@ server <- function(input, output) {
   output$ci_by_type_plot <- renderPlot({
     ci_group <- repo %>%
       group_by(type,ci_present) %>%
-      summarise(mean_z=mean(z_normalized_1to5,na.rm=TRUE),
-                se_z=sd(z_normalized_1to5,na.rm=TRUE)/sqrt(n()),
+      summarise(mean_z=mean(final_score_1to5,na.rm=TRUE),
+                se_z=sd(final_score_1to5,na.rm=TRUE)/sqrt(n()),
                 n=n(),.groups="drop") %>%
       left_join(within_type_tests %>% select(type,ci_p), by="type") %>%
-      mutate(sig_label=case_when(ci_p<0.001~"***",ci_p<0.01~"**",ci_p<0.05~"*",TRUE~"ns"))
+      mutate(sig_label=paste0("p = ",signif(ci_p,3)))
     
     ggplot(ci_group, aes(x=factor(ci_present),y=mean_z,fill=factor(ci_present))) +
-      geom_col(position="dodge",width=0.7,color="white") +
+      geom_col(position="dodge",width=0.6,color="white") +
       geom_errorbar(aes(ymin=mean_z-se_z,ymax=mean_z+se_z),width=0.2,color="black") +
       facet_wrap(~type, scales="free_y") +
       geom_segment(data=ci_group %>% distinct(type,.keep_all=TRUE),
-                   aes(x=1,xend=2,y=max(mean_z+se_z,na.rm=TRUE)+0.05,
-                       yend=max(mean_z+se_z,na.rm=TRUE)+0.05),color="black") +
+                   aes(x=1,xend=2,y=max(mean_z+se_z,na.rm=TRUE)+0.35,
+                       yend=max(mean_z+se_z,na.rm=TRUE)+0.35),color="black") +
       geom_text(data=ci_group %>% distinct(type,.keep_all=TRUE),
-                aes(x=1.5,y=max(mean_z+se_z,na.rm=TRUE)+0.1,label=sig_label),
+                aes(x=1.5,y=max(mean_z+se_z,na.rm=TRUE)+0.7,label=sig_label),
                 size=5,fontface="bold") +
       scale_fill_manual(values=c("0"="#A6CEE3","1"="#1F78B4")) +
-      scale_y_continuous(limits=c(0,5),breaks=seq(0,5,1)) +
+      scale_y_continuous(limits=c(0,NA),breaks=seq(0,5,1)) +
       labs(title="CI Presence Effect per Repository Type",
-           x="CI (0=No, 1=Yes)", y="RQI (1–5)") +
+           x="CI (0=No, 1=Yes)", y="RQI (0–5)") +
       theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) +
-      theme(strip.text=element_text(face="bold"), legend.position="none")
+      theme(strip.text=element_text(face="bold",size=18), panel.spacing=unit(1.6,"lines"),
+            plot.title=element_text(face="bold",hjust=0.5,margin=margin(b=16)),
+            plot.margin=margin(t=20,r=20,b=10,l=10),
+            legend.position="none")
   })
   
   output$test_by_type_plot <- renderPlot({
     test_group <- repo %>%
       group_by(type,tests_present) %>%
-      summarise(mean_z=mean(z_normalized_1to5,na.rm=TRUE),
-                se_z=sd(z_normalized_1to5,na.rm=TRUE)/sqrt(n()),
+      summarise(mean_z=mean(final_score_1to5,na.rm=TRUE),
+                se_z=sd(final_score_1to5,na.rm=TRUE)/sqrt(n()),
                 n=n(),.groups="drop") %>%
       left_join(within_type_tests %>% select(type,tests_p), by="type") %>%
-      mutate(sig_label=case_when(tests_p<0.001~"***",tests_p<0.01~"**",tests_p<0.05~"*",TRUE~"ns"))
+      mutate(sig_label=paste0("p = ",signif(tests_p,3)))
     
     ggplot(test_group, aes(x=factor(tests_present),y=mean_z,fill=factor(tests_present))) +
-      geom_col(position="dodge",width=0.7,color="white") +
+      geom_col(position="dodge",width=0.6,color="white") +
       geom_errorbar(aes(ymin=mean_z-se_z,ymax=mean_z+se_z),width=0.2,color="black") +
       facet_wrap(~type, scales="free_y") +
       geom_segment(data=test_group %>% distinct(type,.keep_all=TRUE),
-                   aes(x=1,xend=2,y=max(mean_z+se_z,na.rm=TRUE)+0.05,
-                       yend=max(mean_z+se_z,na.rm=TRUE)+0.05),color="black") +
+                   aes(x=1,xend=2,y=max(mean_z+se_z,na.rm=TRUE)+0.35,
+                       yend=max(mean_z+se_z,na.rm=TRUE)+0.35),color="black") +
       geom_text(data=test_group %>% distinct(type,.keep_all=TRUE),
-                aes(x=1.5,y=max(mean_z+se_z,na.rm=TRUE)+0.1,label=sig_label),
+                aes(x=1.5,y=max(mean_z+se_z,na.rm=TRUE)+0.7,label=sig_label),
                 size=5,fontface="bold") +
       scale_fill_manual(values=c("0"="#B2DF8A","1"="#33A02C")) +
-      scale_y_continuous(limits=c(0,5),breaks=seq(0,5,1)) +
+      scale_y_continuous(limits=c(0,NA),breaks=seq(0,5,1)) +
       labs(title="Testing Presence Effect per Repository Type",
-           x="Tests (0=No, 1=Yes)", y="RQI (1–5)") +
+           x="Tests (0=No, 1=Yes)", y="RQI (0–5)") +
       theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) +
-      theme(strip.text=element_text(face="bold"), legend.position="none")
+      theme(strip.text=element_text(face="bold",size=18), panel.spacing=unit(1.6,"lines"),
+            plot.title=element_text(face="bold",hjust=0.5,margin=margin(b=16)),
+            plot.margin=margin(t=20,r=20,b=10,l=10),
+            legend.position="none")
   })
   
   # ── 7. Radar ────────────────────────────────────────────────────────────────
   output$radar_plot_ui <- renderUI({
     h <- switch(input$radar_view,
-                "tmb"           = "580px",
-                "by_domain"     = "820px",
-                "top_bottom_20" = "1150px",
-                "580px")
-    plotOutput("radar_plot", height = h)
+                "tmb"           = "650px",
+                "by_domain"     = "1000px",
+                "top_bottom_20" = "1900px",
+                "650px")
+    tags$div(class = "plot-card", plotOutput("radar_plot", height = h))
   })
   
   output$radar_plot <- renderPlot({
@@ -969,15 +1079,16 @@ server <- function(input, output) {
                                 "Popularity\n(outer=more popular)")
       rownames(radar_data) <- c("Max","Min","Top 100","Mid 100","Bottom 100")
       
-      par(mar=c(2,2,4,2))
+      par(mar=c(2,2,4,2), cex.main=1.6)
       fmsb::radarchart(radar_data, axistype=1,
                        pcol=c("#1B9E77","#7570B3","#D95F02"),
                        pfcol=scales::alpha(c("#1B9E77","#7570B3","#D95F02"),0.35),
                        plwd=3, cglcol="grey", cglty=1, axislabcol="grey40",
-                       caxislabels=c("0","25","50","75","100"), vlcex=1.6,
+                       caxislabels=c("0","25","50","75","100"), vlcex=1.7,
+                       calcex=1.2,
                        title=paste("Top vs Mid vs Bottom —", input$repo_type))
       legend("topright", legend=c("Top 100","Mid 100","Bottom 100"),
-             col=c("#1B9E77","#7570B3","#D95F02"), lty=1, lwd=3, bty="n")
+             col=c("#1B9E77","#7570B3","#D95F02"), lty=1, lwd=3, bty="n", cex=1.3)
       
     } else if (input$radar_view == "by_domain") {
       
@@ -986,21 +1097,21 @@ server <- function(input, output) {
       ncol_use <- min(3, n_cats_local)
       nrow_use <- ceiling(n_cats_local / ncol_use)
       
-      par(mfrow = c(nrow_use, ncol_use), mar = c(1,2,4,2), oma = c(0,0,3,0), bg = "white")
+      par(mfrow = c(nrow_use, ncol_use), mar = c(1,2,5,2), oma = c(0,0,4,0), bg = "white")
       for (cat in categories) {
         row_df <- all_by_type_radar %>% filter(type == cat)
         if (nrow(row_df) > 0) {
           fmsb::radarchart(build_single_radar_df(row_df), axistype = 1,
                            pcol = type_colors[[cat]], pfcol = scales::alpha(type_colors[[cat]], 0.35),
                            plwd = 3, cglcol = "gray80", cglty = 1, cglwd = 0.8,
-                           axislabcol = "gray40", vlcex = 1.4,
+                           axislabcol = "gray40", vlcex = 1.6, calcex = 1.1,
                            caxislabels = c("0","25","50","75","100"), title = "")
-          mtext(cat, side = 3, line = 1.4, cex = 1.0, font = 2)
+          mtext(cat, side = 3, line = 1.6, cex = 1.4, font = 2)
         } else {
-          plot.new(); text(0.5, 0.5, paste0(cat, "\n(insufficient data)"), col = "gray50")
+          plot.new(); text(0.5, 0.5, paste0(cat, "\n(insufficient data)"), col = "gray50", cex = 1.3)
         }
       }
-      mtext("Average Metric Profile by Domain", outer = TRUE, cex = 1.4, font = 2, line = 0.8)
+      mtext("Average Metric Profile by Domain", outer = TRUE, cex = 1.8, font = 2, line = 1)
       par(mfrow = c(1,1))
       
     } else { # top_bottom_20
@@ -1008,7 +1119,7 @@ server <- function(input, output) {
       categories   <- sort(unique(repo$type))
       n_cats_local <- length(categories)
       
-      par(mfrow = c(n_cats_local, 2), mar = c(1,2,4,2), oma = c(0,0,3,0), bg = "white")
+      par(mfrow = c(n_cats_local, 2), mar = c(1,2,5,2), oma = c(0,0,4,0), bg = "white")
       for (cat in categories) {
         top_row <- top20_by_type_radar    %>% filter(type == cat)
         bot_row <- bottom20_by_type_radar %>% filter(type == cat)
@@ -1017,25 +1128,25 @@ server <- function(input, output) {
           fmsb::radarchart(build_single_radar_df(top_row), axistype = 1,
                            pcol = "#1F78B4", pfcol = scales::alpha("#1F78B4", 0.35),
                            plwd = 3, cglcol = "gray80", cglty = 1, cglwd = 0.8,
-                           axislabcol = "gray40", vlcex = 1.3,
+                           axislabcol = "gray40", vlcex = 1.5, calcex = 1.1,
                            caxislabels = c("0","25","50","75","100"), title = "")
-          mtext(paste0(cat, " — Top 20"), side = 3, line = 1.4, cex = 0.9, font = 2)
+          mtext(paste0(cat, " — Top 20"), side = 3, line = 1.6, cex = 1.3, font = 2)
         } else {
-          plot.new(); text(0.5, 0.5, "insufficient data", col = "gray50")
+          plot.new(); text(0.5, 0.5, "insufficient data", col = "gray50", cex = 1.3)
         }
         
         if (nrow(bot_row) > 0) {
           fmsb::radarchart(build_single_radar_df(bot_row), axistype = 1,
                            pcol = "#E31A1C", pfcol = scales::alpha("#E31A1C", 0.35),
                            plwd = 3, cglcol = "gray80", cglty = 1, cglwd = 0.8,
-                           axislabcol = "gray40", vlcex = 1.3,
+                           axislabcol = "gray40", vlcex = 1.5, calcex = 1.1,
                            caxislabels = c("0","25","50","75","100"), title = "")
-          mtext(paste0(cat, " — Bottom 20"), side = 3, line = 1.4, cex = 0.9, font = 2)
+          mtext(paste0(cat, " — Bottom 20"), side = 3, line = 1.6, cex = 1.3, font = 2)
         } else {
-          plot.new(); text(0.5, 0.5, "insufficient data", col = "gray50")
+          plot.new(); text(0.5, 0.5, "insufficient data", col = "gray50", cex = 1.3)
         }
       }
-      mtext("Top 20 vs Bottom 20 by Domain", outer = TRUE, cex = 1.4, font = 2, line = 0.8)
+      mtext("Top 20 vs Bottom 20 by Domain", outer = TRUE, cex = 1.8, font = 2, line = 1)
       par(mfrow = c(1,1))
     }
   })
@@ -1045,8 +1156,8 @@ server <- function(input, output) {
     df <- filtered_repo()
     smry <- df %>%
       group_by(age_cohort,ci_present) %>%
-      summarise(mean_z=mean(z_normalized_1to5,na.rm=TRUE),
-                se_z=sd(z_normalized_1to5,na.rm=TRUE)/sqrt(n()),n=n(),.groups="drop") %>%
+      summarise(mean_z=mean(final_score_1to5,na.rm=TRUE),
+                se_z=sd(final_score_1to5,na.rm=TRUE)/sqrt(n()),n=n(),.groups="drop") %>%
       mutate(ci_label=ifelse(ci_present==1,"Has CI","No CI"))
     
     ggplot(smry,aes(x=age_cohort,y=mean_z,color=ci_label,group=ci_label)) +
@@ -1054,7 +1165,7 @@ server <- function(input, output) {
       geom_errorbar(aes(ymin=mean_z-se_z,ymax=mean_z+se_z),width=0.15) +
       scale_color_manual(values=c("Has CI"="#1F78B4","No CI"="#A6CEE3")) +
       labs(title="Mean RQI by Repo Age Cohort — CI vs No CI",
-           x="Repository Age Cohort",y="RQI (1–5)",color=NULL) +
+           x="Repository Age Cohort",y="RQI (0–5)",color=NULL) +
       theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) + theme(plot.title=element_text(face="bold",hjust=0.5))
   })
   
@@ -1062,8 +1173,8 @@ server <- function(input, output) {
     df <- filtered_repo()
     smry <- df %>%
       group_by(age_cohort,tests_present) %>%
-      summarise(mean_z=mean(z_normalized_1to5,na.rm=TRUE),
-                se_z=sd(z_normalized_1to5,na.rm=TRUE)/sqrt(n()),n=n(),.groups="drop") %>%
+      summarise(mean_z=mean(final_score_1to5,na.rm=TRUE),
+                se_z=sd(final_score_1to5,na.rm=TRUE)/sqrt(n()),n=n(),.groups="drop") %>%
       mutate(test_label=ifelse(tests_present==1,"Has Tests","No Tests"))
     
     ggplot(smry,aes(x=age_cohort,y=mean_z,color=test_label,group=test_label)) +
@@ -1071,7 +1182,7 @@ server <- function(input, output) {
       geom_errorbar(aes(ymin=mean_z-se_z,ymax=mean_z+se_z),width=0.15) +
       scale_color_manual(values=c("Has Tests"="#33A02C","No Tests"="#B2DF8A")) +
       labs(title="Mean RQI by Repo Age Cohort — Tests vs No Tests",
-           x="Repository Age Cohort",y="RQI (1–5)",color=NULL) +
+           x="Repository Age Cohort",y="RQI (0–5)",color=NULL) +
       theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) + theme(plot.title=element_text(face="bold",hjust=0.5))
   })
   
@@ -1088,7 +1199,7 @@ server <- function(input, output) {
     ggplot(bio_cohort,aes(x=age_cohort,y=pct,fill=metric)) +
       geom_col(position=position_dodge(0.6),width=0.55,color="white") +
       geom_text(aes(label=paste0(round(pct,1),"%")),
-                position=position_dodge(0.6),vjust=-0.4,size=3.2) +
+                position=position_dodge(0.6),vjust=-0.4,size=5.5,fontface="bold") +
       scale_fill_manual(values=c("CI Coverage"="#1F78B4","Test Coverage"="#33A02C")) +
       labs(title="Bioinformatics: CI and Test Coverage by Age Cohort",
            x="Repository Age Cohort",y="Coverage (%)",fill=NULL) +
@@ -1100,14 +1211,14 @@ server <- function(input, output) {
     
     cohort_ci_s <- df %>%
       group_by(age_cohort, ci_present) %>%
-      summarise(mean_z=mean(z_normalized_1to5,na.rm=TRUE),
-                se_z=sd(z_normalized_1to5,na.rm=TRUE)/sqrt(n()), n=n(), .groups="drop") %>%
+      summarise(mean_z=mean(final_score_1to5,na.rm=TRUE),
+                se_z=sd(final_score_1to5,na.rm=TRUE)/sqrt(n()), n=n(), .groups="drop") %>%
       mutate(ci_label=ifelse(ci_present==1,"Has CI","No CI"))
     
     cohort_test_s <- df %>%
       group_by(age_cohort, tests_present) %>%
-      summarise(mean_z=mean(z_normalized_1to5,na.rm=TRUE),
-                se_z=sd(z_normalized_1to5,na.rm=TRUE)/sqrt(n()), n=n(), .groups="drop") %>%
+      summarise(mean_z=mean(final_score_1to5,na.rm=TRUE),
+                se_z=sd(final_score_1to5,na.rm=TRUE)/sqrt(n()), n=n(), .groups="drop") %>%
       mutate(test_label=ifelse(tests_present==1,"Has Tests","No Tests"))
     
     base_theme <- theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) +
@@ -1119,14 +1230,14 @@ server <- function(input, output) {
       geom_line(linewidth=1.1) + geom_point(size=3) +
       geom_errorbar(aes(ymin=mean_z-se_z,ymax=mean_z+se_z), width=0.15) +
       scale_color_manual(values=c("Has CI"="#1F78B4","No CI"="#A6CEE3")) +
-      labs(title="CI vs No CI", x="Repository Age Cohort", y="RQI (1–5)") +
+      labs(title="CI vs No CI", x="Repository Age Cohort", y="RQI (0–5)") +
       base_theme
     
     p_tests <- ggplot(cohort_test_s, aes(x=age_cohort,y=mean_z,color=test_label,group=test_label)) +
       geom_line(linewidth=1.1) + geom_point(size=3) +
       geom_errorbar(aes(ymin=mean_z-se_z,ymax=mean_z+se_z), width=0.15) +
       scale_color_manual(values=c("Has Tests"="#33A02C","No Tests"="#B2DF8A")) +
-      labs(title="Tests vs No Tests", x="Repository Age Cohort", y="RQI (1–5)") +
+      labs(title="Tests vs No Tests", x="Repository Age Cohort", y="RQI (0–5)") +
       base_theme
     
     (p_ci | p_tests) +
@@ -1137,7 +1248,7 @@ server <- function(input, output) {
   })
   
   # ── 9. Language ─────────────────────────────────────────────────────────────
-  output$lang_plot <- renderPlot({
+  lang_filtered <- reactive({
     if (input$lang_scope == "bio") {
       df           <- filter(lang_primary, type == "bioinformatics")
       min_n_use    <- min_n_bio
@@ -1150,47 +1261,70 @@ server <- function(input, output) {
       title_prefix <- ""
     }
     df <- filter(df, language %in% valid_langs)
+    list(df=df, min_n_use=min_n_use, title_prefix=title_prefix)
+  })
+  
+  # The number of bars per language (1 for "none", 2 for tests/ci splits, 4 for
+  # the qa bucket split) varies a lot, and so does the number of languages that
+  # pass the n-threshold depending on scope/repo-type filters — so the plot area
+  # is sized here, per render, rather than fixed, to keep every row legible
+  # instead of squeezing a filter-dependent number of rows into one fixed height.
+  output$lang_plot_ui <- renderUI({
+    n_langs     <- length(unique(lang_filtered()$df$language))
+    px_per_lang <- switch(input$lang_split, "none"=34, "tests"=48, "ci"=48, "qa"=64, 34)
+    h           <- max(500, n_langs * px_per_lang + 160)
+    tags$div(class = "plot-card", plotOutput("lang_plot", height = paste0(h, "px")))
+  })
+  
+  output$lang_plot <- renderPlot({
+    fl           <- lang_filtered()
+    df           <- fl$df
+    min_n_use    <- fl$min_n_use
+    title_prefix <- fl$title_prefix
     
     if (input$lang_split == "none") {
       smry <- df %>% group_by(language) %>%
-        summarise(n=n(), mean_rating=mean(z_normalized_1to5,na.rm=TRUE), .groups="drop")
+        summarise(n=n(), mean_rating=mean(final_score_1to5,na.rm=TRUE), .groups="drop")
       ggplot(smry,aes(x=fct_reorder(language,mean_rating),y=mean_rating)) +
-        geom_col(fill="#4C72B0", width=0.7) +
+        geom_col(fill="#4C72B0", width=0.55) +
         coord_flip() +
+        scale_x_discrete(expand=expansion(mult=0.08, add=0.6)) +
         labs(title=paste0(title_prefix,"Mean RQI by Primary Language (n≥",min_n_use,")"),
-             x=NULL,y="Mean RQI (1–5)") +
+             x=NULL,y="Mean RQI (0–5)") +
         theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16))
       
     } else if (input$lang_split == "tests") {
       smry <- df %>% group_by(language,tests_present) %>%
-        summarise(n=n(),mean_rating=mean(z_normalized_1to5,na.rm=TRUE),
-                  se=sd(z_normalized_1to5,na.rm=TRUE)/sqrt(n),.groups="drop")
+        summarise(n=n(),mean_rating=mean(final_score_1to5,na.rm=TRUE),
+                  se=sd(final_score_1to5,na.rm=TRUE)/sqrt(n),.groups="drop")
       ggplot(smry,aes(x=fct_reorder(language,mean_rating),y=mean_rating,
                       fill=factor(tests_present))) +
-        geom_col(position=position_dodge(0.7),width=0.65,color="white") +
+        geom_col(position=position_dodge(0.6),width=0.5,color="white") +
         geom_errorbar(aes(ymin=mean_rating-se,ymax=mean_rating+se),
-                      position=position_dodge(0.7),width=0.2) +
+                      position=position_dodge(0.6),width=0.2) +
         coord_flip() +
+        scale_x_discrete(expand=expansion(mult=0.08, add=0.6)) +
         scale_fill_manual(values=c("0"="#B2DF8A","1"="#33A02C"),
                           labels=c("No Tests","Has Tests")) +
         labs(title=paste0(title_prefix,"Mean RQI by Primary Language (split by Testing) — n≥", min_n_use),
-             x=NULL,y="Mean RQI (1–5)",fill="Tests Present") +
+             x=NULL,y="Mean RQI (0–5)",fill="Tests Present") +
         theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16))
       
     } else if (input$lang_split == "ci") {
       smry <- df %>% group_by(language,ci_present) %>%
-        summarise(n=n(),mean_rating=mean(z_normalized_1to5,na.rm=TRUE),
-                  se=sd(z_normalized_1to5,na.rm=TRUE)/sqrt(n),.groups="drop")
+        summarise(n=n(),mean_rating=mean(final_score_1to5,na.rm=TRUE),
+                  se=sd(final_score_1to5,na.rm=TRUE)/sqrt(n),.groups="drop")
       ggplot(smry,aes(x=fct_reorder(language,mean_rating),y=mean_rating,
                       fill=factor(ci_present))) +
-        geom_col(position=position_dodge(0.7),width=0.65,color="white") +
+        geom_col(position=position_dodge(0.6),width=0.5,color="white") +
         geom_errorbar(aes(ymin=mean_rating-se,ymax=mean_rating+se),
-                      position=position_dodge(0.7),width=0.2) +
+                      position=position_dodge(0.6),width=0.2) +
         coord_flip() +
+        scale_x_discrete(expand=expansion(mult=0.08, add=0.6)) +
         scale_fill_manual(values=c("0"="#A6CEE3","1"="#1F78B4"),
                           labels=c("No CI","Has CI")) +
         labs(title=paste0(title_prefix,"Mean RQI by Primary Language (split by CI) — n≥", min_n_use),
-             x=NULL,y="Mean RQI (1–5)",fill="CI Present") +
+             x=NULL,y="Mean RQI (0–5)",fill="CI Present") +
         theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16))
       
     } else {
@@ -1202,15 +1336,16 @@ server <- function(input, output) {
           TRUE ~ "Neither"
         ), levels=c("Neither","Tests only","CI only","Has CI + Tests"))) %>%
         group_by(language,qa_bucket) %>%
-        summarise(n=n(),mean_rating=mean(z_normalized_1to5,na.rm=TRUE),
-                  se=sd(z_normalized_1to5,na.rm=TRUE)/sqrt(n),.groups="drop")
+        summarise(n=n(),mean_rating=mean(final_score_1to5,na.rm=TRUE),
+                  se=sd(final_score_1to5,na.rm=TRUE)/sqrt(n),.groups="drop")
       ggplot(smry,aes(x=fct_reorder(language,mean_rating),y=mean_rating,fill=qa_bucket)) +
-        geom_col(position=position_dodge(0.8),width=0.7,color="white") +
+        geom_col(position=position_dodge(0.7),width=0.6,color="white") +
         geom_errorbar(aes(ymin=mean_rating-se,ymax=mean_rating+se),
-                      position=position_dodge(0.8),width=0.2) +
+                      position=position_dodge(0.7),width=0.2) +
         coord_flip() +
+        scale_x_discrete(expand=expansion(mult=0.08, add=0.6)) +
         labs(title=paste0(title_prefix,"Mean RQI by Primary Language (CI/Tests buckets) — n≥", min_n_use),
-             x=NULL,y="Mean RQI (1–5)",fill="QA Bucket") +
+             x=NULL,y="Mean RQI (0–5)",fill="QA Bucket") +
         theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16))
     }
   })
@@ -1261,7 +1396,7 @@ server <- function(input, output) {
     
     ggplot(act_smry,aes(x=qa_bucket,y=activity_rate,fill=qa_bucket)) +
       geom_col(width=0.65,color="white") +
-      geom_text(aes(label=paste0(round(activity_rate,1),"%")),vjust=-0.4,size=3.2) +
+      geom_text(aes(label=paste0(round(activity_rate,1),"%")),vjust=-0.4,size=5.5,fontface="bold") +
       facet_wrap(~type) +
       scale_fill_manual(values=c("Neither"="#FDBF6F","Tests Only"="#B2DF8A",
                                  "CI Only"="#A6CEE3","CI + Tests"="#1F78B4")) +
@@ -1270,6 +1405,8 @@ server <- function(input, output) {
       theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) +
       theme(plot.title=element_text(face="bold",hjust=0.5),
             axis.text.x=element_text(angle=30,hjust=1,size=18),
+            strip.text=element_text(size=18,face="bold"),
+            panel.spacing=unit(1.4,"lines"),
             legend.position="none")
   })
   
@@ -1279,7 +1416,7 @@ server <- function(input, output) {
       p("Citation data not found (repos_with_citations_gemma_v2.csv).", style="color:gray;")
     } else {
       tagList(
-        plotOutput("cit_plot_out", height="520px"),
+        tags$div(class = "plot-card", plotOutput("cit_plot_out", height="620px")),
         hr(),
         h4("Table S2 — Top 20 Most-Cited Repositories with RQI ≤ 2.5"),
         tableOutput("citation_table_s2")
@@ -1292,29 +1429,29 @@ server <- function(input, output) {
     craw <- citations_raw %>% filter(!is.na(citation_count), citation_count >= 0)
     
     if (input$cit_plot == "loess") {
-      dat <- craw %>% mutate(rqi_bin=round(z_normalized_1to5*4)/4) %>%
+      dat <- craw %>% mutate(rqi_bin=round(final_score_1to5*4)/4) %>%
         group_by(rqi_bin) %>% summarise(mean_citations=mean(citation_count),.groups="drop")
       ggplot(dat,aes(x=rqi_bin,y=mean_citations)) +
         geom_smooth(method="loess",span=0.2,color="#1F78B4",fill="#1F78B4",
                     alpha=0.15,linewidth=1.2,se=FALSE) +
         geom_point(color="#1F78B4",size=2) +
         coord_cartesian(ylim=c(0,NA)) +
-        labs(title="Mean Citation Count vs Repository Quality",x="RQI (1–5)",y="Mean Citations") +
+        labs(title="Mean Citation Count vs Repository Quality",x="RQI (0–5)",y="Mean Citations") +
         theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16))+theme(plot.title=element_text(face="bold",hjust=0.5))
       
     } else if (input$cit_plot == "median_loess") {
-      dat <- craw %>% mutate(rqi_bin=round(z_normalized_1to5*2)/2) %>%
+      dat <- craw %>% mutate(rqi_bin=round(final_score_1to5*2)/2) %>%
         group_by(rqi_bin) %>% summarise(median_citations=median(citation_count),.groups="drop")
       ggplot(dat,aes(x=rqi_bin,y=median_citations)) +
         geom_smooth(method="loess",span=0.5,color="#1F78B4",fill="#1F78B4",
                     alpha=0.15,linewidth=1.2,se=FALSE) +
         geom_point(color="#1F78B4",size=2) +
         coord_cartesian(ylim=c(0,NA)) +
-        labs(title="Median Citation Count vs Repository Quality",x="RQI (1–5)",y="Median Citations") +
+        labs(title="Median Citation Count vs Repository Quality",x="RQI (0–5)",y="Median Citations") +
         theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16))+theme(plot.title=element_text(face="bold",hjust=0.5))
       
     } else if (input$cit_plot == "violin") {
-      dat <- craw %>% mutate(rqi_bin=factor(round(z_normalized_1to5*2)/2))
+      dat <- craw %>% mutate(rqi_bin=factor(round(final_score_1to5*2)/2))
       ggplot(dat,aes(x=rqi_bin,y=log1p(citation_count),fill=rqi_bin)) +
         geom_violin(alpha=0.7,trim=TRUE) +
         geom_boxplot(width=0.05,fill="white",outlier.shape=NA,color="grey30") +
@@ -1325,16 +1462,16 @@ server <- function(input, output) {
         theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16))+theme(legend.position="none",plot.title=element_text(face="bold",hjust=0.5))
       
     } else if (input$cit_plot == "mean_bar") {
-      dat <- craw %>% mutate(rqi_bin = round(z_normalized_1to5*2)/2)
+      dat <- craw %>% mutate(rqi_bin = round(final_score_1to5*2)/2)
       ggplot(dat, aes(x=rqi_bin, y=citation_count)) +
         stat_summary(fun="mean", geom="bar", fill="#1F78B4", alpha=0.8, width=0.4) +
         coord_cartesian(ylim=c(0,NA)) +
-        labs(title="Mean Citation Count by RQI Bin", x="RQI (1–5)", y="Mean Citation Count") +
+        labs(title="Mean Citation Count by RQI Bin", x="RQI (0–5)", y="Mean Citation Count") +
         theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) + theme(plot.title=element_text(face="bold",hjust=0.5))
       
     } else if (input$cit_plot == "bar_lh") {
-      grp <- craw %>% filter(!is.na(z_normalized_1to5)) %>%
-        mutate(rqi_group=factor(ifelse(z_normalized_1to5<=2.5,"Low","High"),levels=c("Low","High")))
+      grp <- craw %>% filter(!is.na(final_score_1to5)) %>%
+        mutate(rqi_group=factor(ifelse(final_score_1to5<=2.5,"Low","High"),levels=c("Low","High")))
       grp$rqi_group <- require_two_groups(grp$rqi_group, "RQI group")
       smry  <- grp %>% group_by(rqi_group) %>% summarise(median_cit=median(citation_count),.groups="drop")
       p_val <- wilcox.test(citation_count~rqi_group,data=grp)$p.value
@@ -1343,48 +1480,48 @@ server <- function(input, output) {
       ann   <- data.frame(x=1,xend=2,y=max_b+step,label=sig)
       ggplot(smry,aes(x=rqi_group,y=median_cit,fill=rqi_group)) +
         geom_col(alpha=0.85,width=0.5) +
-        geom_text(aes(label=round(median_cit,1)),vjust=-0.5,size=4) +
+        geom_text(aes(label=round(median_cit,1)),vjust=-0.5,size=5.5,fontface="bold") +
         geom_segment(data=ann,aes(x=x,xend=xend,y=y,yend=y),inherit.aes=FALSE,linewidth=0.5) +
-        geom_text(data=ann,aes(x=(x+xend)/2,y=y+step*0.1,label=label),inherit.aes=FALSE,size=4) +
+        geom_text(data=ann,aes(x=(x+xend)/2,y=y+step*0.1,label=label),inherit.aes=FALSE,size=5.5,fontface="bold") +
         scale_fill_manual(values=c("Low"="#D73027","High"="#1A9850")) +
         labs(title="Median Citations by Quality Group",x="RQI Group",y="Median Citations") +
         theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16))+theme(legend.position="none",plot.title=element_text(face="bold",hjust=0.5))
       
     } else if (input$cit_plot == "bar_bins") {
-      grp <- craw %>% filter(!is.na(z_normalized_1to5)) %>%
+      grp <- craw %>% filter(!is.na(final_score_1to5)) %>%
         mutate(rqi_group=factor(case_when(
-          z_normalized_1to5<2~"1-2",z_normalized_1to5<3~"2-3",
-          z_normalized_1to5<4~"3-4",TRUE~"4-5"),levels=c("1-2","2-3","3-4","4-5")))
+          final_score_1to5<2~"1-2",final_score_1to5<3~"2-3",
+          final_score_1to5<4~"3-4",TRUE~"4-5"),levels=c("1-2","2-3","3-4","4-5")))
       smry <- grp %>% group_by(rqi_group) %>% summarise(median_cit=median(citation_count),.groups="drop")
       all_pairs <- build_sig_brackets(grp, "rqi_group", "citation_count")
       max_bar <- max(smry$median_cit); step <- max_bar*0.10
       if (nrow(all_pairs) > 0) all_pairs$y <- max_bar + step*seq_len(nrow(all_pairs))
       p <- ggplot(smry,aes(x=rqi_group,y=median_cit,fill=rqi_group)) +
         geom_col(alpha=0.85,width=0.6) +
-        geom_text(aes(label=round(median_cit,1)),vjust=-0.5,size=4) +
+        geom_text(aes(label=round(median_cit,1)),vjust=-0.5,size=5.5,fontface="bold") +
         scale_fill_manual(values=c("1-2"="#FC8D59","2-3"="#FEE08B","3-4"="#91CF60","4-5"="#1A9850")) +
         labs(title="Median Citations by RQI Bin",x="RQI Score Bin",y="Median Citations") +
         theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16))+theme(legend.position="none",plot.title=element_text(face="bold",hjust=0.5))
       if (nrow(all_pairs) > 0) {
         p <- p +
           geom_segment(data=all_pairs,aes(x=x,xend=xend,y=y,yend=y),inherit.aes=FALSE,linewidth=0.5) +
-          geom_text(data=all_pairs,aes(x=(x+xend)/2,y=y+step*0.15,label=label),inherit.aes=FALSE,size=3.5) +
+          geom_text(data=all_pairs,aes(x=(x+xend)/2,y=y+step*0.15,label=label),inherit.aes=FALSE,size=5) +
           coord_cartesian(ylim=c(0, max_bar + step*(nrow(all_pairs)+2)))
       }
       p
       
     } else if (input$cit_plot == "bar_bins_fine") {
-      grp <- craw %>% filter(!is.na(z_normalized_1to5)) %>%
+      grp <- craw %>% filter(!is.na(final_score_1to5)) %>%
         mutate(
           rqi_group = case_when(
-            z_normalized_1to5 < 1.5 ~ "1-1.5", z_normalized_1to5 < 2.0 ~ "1.5-2",
-            z_normalized_1to5 < 2.5 ~ "2-2.5", z_normalized_1to5 < 3.0 ~ "2.5-3",
-            z_normalized_1to5 < 3.5 ~ "3-3.5", z_normalized_1to5 < 4.0 ~ "3.5-4",
-            z_normalized_1to5 < 4.5 ~ "4-4.5", TRUE ~ "4.5-5"
+            final_score_1to5 < 1.5 ~ "1-1.5", final_score_1to5 < 2.0 ~ "1.5-2",
+            final_score_1to5 < 2.5 ~ "2-2.5", final_score_1to5 < 3.0 ~ "2.5-3",
+            final_score_1to5 < 3.5 ~ "3-3.5", final_score_1to5 < 4.0 ~ "3.5-4",
+            final_score_1to5 < 4.5 ~ "4-4.5", TRUE ~ "4.5-5"
           ),
           rqi_group = factor(rqi_group, levels=c("1-1.5","1.5-2","2-2.5","2.5-3",
                                                  "3-3.5","3.5-4","4-4.5","4.5-5")),
-          quality = factor(ifelse(z_normalized_1to5<2.5,"Low","High"), levels=c("Low","High"))
+          quality = factor(ifelse(final_score_1to5<2.5,"Low","High"), levels=c("Low","High"))
         )
       smry <- grp %>% group_by(rqi_group,quality) %>% summarise(median_cit=median(citation_count),.groups="drop")
       all_pairs <- build_sig_brackets(grp,"rqi_group","citation_count")
@@ -1399,7 +1536,7 @@ server <- function(input, output) {
                               med_low, med_high, sig_lbl, ifelse(p_lh<0.001,"<0.001",sprintf("=%.3f",p_lh)))
       p <- ggplot(smry, aes(x=rqi_group,y=median_cit,fill=quality)) +
         geom_col(alpha=0.85,width=0.6) +
-        geom_text(aes(label=round(median_cit,1)), vjust=-0.5, size=4) +
+        geom_text(aes(label=round(median_cit,1)), vjust=-0.5, size=5.5,fontface="bold") +
         scale_fill_manual(values=c("Low"="#D73027","High"="#1A9850")) +
         labs(title="Median Citations by RQI Bin", subtitle=subtitle_str,
              x="RQI Score Bin", y="Median Citations", fill="Quality Group") +
@@ -1410,47 +1547,69 @@ server <- function(input, output) {
       if (nrow(all_pairs) > 0) {
         p <- p +
           geom_segment(data=all_pairs, aes(x=x,xend=xend,y=y,yend=y), inherit.aes=FALSE, linewidth=0.5) +
-          geom_text(data=all_pairs, aes(x=(x+xend)/2, y=y+step*0.15, label=label), inherit.aes=FALSE, size=3.5) +
+          geom_text(data=all_pairs, aes(x=(x+xend)/2, y=y+step*0.15, label=label), inherit.aes=FALSE, size=5) +
           coord_cartesian(ylim=c(0, max_bar + step*(nrow(all_pairs)+2)))
       }
       p
       
     } else if (input$cit_plot == "fig6") {
-      grp <- craw %>% filter(citation_count>0, !is.na(z_normalized_1to5), published) %>%
+      p_label_num <- function(p) if (p < 0.001) "p<0.001" else sprintf("p=%.3f", p)
+      
+      grp <- craw %>% filter(citation_count > 0, !is.na(final_score_1to5), published) %>%
         mutate(
           rqi_group = case_when(
-            z_normalized_1to5<2~"1-2", z_normalized_1to5<2.5~"2-2.5",
-            z_normalized_1to5<3.5~"2.5-3.5", z_normalized_1to5<4.5~"3.5-4.5", TRUE~"4.5-5"
+            final_score_1to5 < 2   ~ "1-2",
+            final_score_1to5 < 2.5 ~ "2-2.5",
+            final_score_1to5 < 3.5 ~ "2.5-3.5",
+            final_score_1to5 < 4.5 ~ "3.5-4.5",
+            TRUE                    ~ "4.5-5"
           ),
-          rqi_group = factor(rqi_group, levels=c("1-2","2-2.5","2.5-3.5","3.5-4.5","4.5-5")),
-          quality = factor(ifelse(z_normalized_1to5<=2.5,"Low","High"), levels=c("Low","High"))
+          rqi_group = factor(rqi_group, levels = c("1-2","2-2.5","2.5-3.5","3.5-4.5","4.5-5"))
         )
-      smry <- grp %>% group_by(rqi_group,quality) %>% summarise(median_cit=median(citation_count),.groups="drop")
-      all_pairs <- build_sig_brackets(grp,"rqi_group","citation_count")
-      max_bar <- max(smry$median_cit); step <- max_bar*0.10
-      if (nrow(all_pairs) > 0) all_pairs$y <- max_bar + step*seq_len(nrow(all_pairs))
-      grp$quality <- require_two_groups(grp$quality, "quality group")
-      p_lh <- wilcox.test(citation_count~quality, data=grp)$p.value
-      med_low <- median(grp$citation_count[grp$quality=="Low"])
-      med_high <- median(grp$citation_count[grp$quality=="High"])
-      sig_lbl <- if (p_lh<0.001) "***" else if(p_lh<0.01) "**" else if(p_lh<0.05) "*" else "ns"
-      subtitle_str <- sprintf("Low (≤2.5) median = %.1f vs High (>2.5) median = %.1f | Wilcoxon %s (p%s)",
-                              med_low, med_high, sig_lbl, ifelse(p_lh<0.001,"<0.001",sprintf("=%.3f",p_lh)))
-      p <- ggplot(smry, aes(x=rqi_group,y=median_cit,fill=quality)) +
-        geom_col(alpha=0.85,width=0.6) +
-        geom_text(aes(label=round(median_cit,1)), vjust=-0.5, size=4) +
-        scale_fill_manual(values=c("Low"="#D73027","High"="#1A9850")) +
-        labs(title="Median Citation Count by RQI Bin (Published Repositories)",
-             subtitle=subtitle_str, x="RQI Score Bin", y="Median Citation Count", fill="Quality Group") +
+      
+      smry <- grp %>% group_by(rqi_group) %>% summarise(median_cit = median(citation_count), .groups = "drop")
+      
+      groups_alt    <- levels(droplevels(grp$rqi_group))
+      group_pos_alt <- setNames(seq_along(groups_alt), groups_alt)
+      
+      all_pairs <- do.call(rbind, lapply(seq_len(length(groups_alt) - 1), function(i) {
+        do.call(rbind, lapply((i + 1):length(groups_alt), function(j) {
+          a <- groups_alt[i]; b <- groups_alt[j]
+          dat <- grp[grp$rqi_group %in% c(a, b), ]
+          dat$rqi_group <- droplevels(factor(dat$rqi_group))
+          if (nlevels(dat$rqi_group) < 2) return(NULL)
+          p_val <- wilcox.test(citation_count ~ rqi_group, data = dat)$p.value
+          data.frame(g1 = a, g2 = b, x = group_pos_alt[[a]], xend = group_pos_alt[[b]],
+                     p_value = p_val, label = p_label_num(p_val), stringsAsFactors = FALSE)
+        }))
+      }))
+      if (is.null(all_pairs)) {
+        all_pairs <- data.frame(g1 = character(), g2 = character(), x = numeric(),
+                                xend = numeric(), p_value = numeric(), label = character())
+      }
+      all_pairs <- all_pairs[all_pairs$p_value < 0.05, ]
+      
+      max_bar <- max(smry$median_cit); step <- max_bar * 0.16
+      if (nrow(all_pairs) > 0) all_pairs$y <- max_bar + step * seq_len(nrow(all_pairs))
+      
+      rqi_gradient <- c("1-2" = "#D73027", "2-2.5" = "#FC8D59", "2.5-3.5" = "#FEE08B",
+                        "3.5-4.5" = "#91CF60", "4.5-5" = "#1A9850")
+      
+      p <- ggplot(smry, aes(x = rqi_group, y = median_cit, fill = rqi_group)) +
+        geom_col(alpha = 0.85, width = 0.5) +
+        geom_text(aes(label = round(median_cit, 1)), vjust = -0.5, size = 5.5, fontface = "bold") +
+        scale_fill_manual(values = rqi_gradient) +
+        labs(title = "Median Citation Count by RQI Bin (Published Repositories)",
+             x = "RQI Score Bin", y = "Median Citation Count") +
         theme_minimal(base_size=22) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) +
-        theme(plot.title=element_text(face="bold",hjust=0.5),
-              plot.subtitle=element_text(hjust=0.5,color="gray40",size=16),
-              legend.position="bottom")
+        theme(plot.title = element_text(face = "bold", hjust = 0.5), legend.position = "none")
       if (nrow(all_pairs) > 0) {
         p <- p +
-          geom_segment(data=all_pairs, aes(x=x,xend=xend,y=y,yend=y), inherit.aes=FALSE, linewidth=0.5) +
-          geom_text(data=all_pairs, aes(x=(x+xend)/2, y=y+step*0.15, label=label), inherit.aes=FALSE, size=3.5) +
-          coord_cartesian(ylim=c(0, max_bar + step*(nrow(all_pairs)+2)))
+          geom_segment(data = all_pairs, aes(x = x, xend = xend, y = y, yend = y), inherit.aes = FALSE, linewidth = 0.5) +
+          geom_segment(data = all_pairs, aes(x = x, xend = x, y = y - step * 0.15, yend = y), inherit.aes = FALSE, linewidth = 0.5) +
+          geom_segment(data = all_pairs, aes(x = xend, xend = xend, y = y - step * 0.15, yend = y), inherit.aes = FALSE, linewidth = 0.5) +
+          geom_text(data = all_pairs, aes(x = (x + xend) / 2, y = y + step * 0.35, label = label), inherit.aes = FALSE, size = 5) +
+          coord_cartesian(ylim = c(0, max_bar + step * (nrow(all_pairs) + 2)))
       }
       p
       
@@ -1472,11 +1631,11 @@ server <- function(input, output) {
       # down to "Published" only, discarding almost every "Not Published" row.
       bio_pub <- citations_raw %>% filter(tolower(type)=="bioinformatics")
       bio_pub$pub_label <- require_two_groups(bio_pub$pub_label, "publication-status")
-      wt <- wilcox.test(z_normalized_1to5 ~ pub_label, data=bio_pub)
+      wt <- wilcox.test(final_score_1to5 ~ pub_label, data=bio_pub)
       meds <- bio_pub %>% group_by(pub_label) %>%
-        summarise(median_rqi=median(z_normalized_1to5,na.rm=TRUE),.groups="drop")
+        summarise(median_rqi=median(final_score_1to5,na.rm=TRUE),.groups="drop")
       y_max <- max(meds$median_rqi); sig_y <- y_max*1.1
-      ggplot(bio_pub, aes(x=pub_label,y=z_normalized_1to5,fill=pub_label)) +
+      ggplot(bio_pub, aes(x=pub_label,y=final_score_1to5,fill=pub_label)) +
         geom_bar(stat="summary", fun="median", alpha=0.8, width=0.5) +
         geom_text(data=meds, aes(x=pub_label,y=median_rqi,label=round(median_rqi,2)),
                   vjust=-0.5, fontface="bold", inherit.aes=FALSE) +
@@ -1494,52 +1653,52 @@ server <- function(input, output) {
       # Uses citations_raw (not craw) — see note in pub_bar above.
       bio_pub <- citations_raw %>% filter(tolower(type)=="bioinformatics")
       bio_pub$pub_label <- require_two_groups(bio_pub$pub_label, "publication-status")
-      wt <- wilcox.test(z_normalized_1to5 ~ pub_label, data=bio_pub)
+      wt <- wilcox.test(final_score_1to5 ~ pub_label, data=bio_pub)
       meds <- bio_pub %>% group_by(pub_label) %>%
-        summarise(median_rqi=median(z_normalized_1to5,na.rm=TRUE), n=n(), .groups="drop")
+        summarise(median_rqi=median(final_score_1to5,na.rm=TRUE), n=n(), .groups="drop")
       p_label <- ifelse(wt$p.value<0.0001,"p < 0.0001", paste("p =",round(wt$p.value,4)))
-      y_max <- max(bio_pub$z_normalized_1to5, na.rm=TRUE); sig_y <- y_max*1.08
-      ggplot(bio_pub, aes(x=pub_label,y=z_normalized_1to5,fill=pub_label)) +
+      y_max <- max(bio_pub$final_score_1to5, na.rm=TRUE); sig_y <- y_max*1.08
+      ggplot(bio_pub, aes(x=pub_label,y=final_score_1to5,fill=pub_label)) +
         geom_violin(alpha=0.7, trim=TRUE, linewidth=0.4) +
         geom_jitter(aes(color=pub_label), alpha=0.25, width=0.15, size=1.2, show.legend=FALSE) +
         geom_boxplot(width=0.12, fill="white", outlier.shape=NA, linewidth=0.5, coef=0) +
         geom_point(data=meds, aes(x=pub_label,y=median_rqi), shape=18, size=3.5, color="grey20", inherit.aes=FALSE) +
         geom_text(data=meds, aes(x=pub_label,y=median_rqi,label=paste0(round(median_rqi,2),"\n(n=",n,")")),
-                  vjust=-0.6, fontface="bold", size=3.5, inherit.aes=FALSE) +
+                  vjust=-0.6, fontface="bold", size=5.5, inherit.aes=FALSE) +
         annotate("segment", x=1,xend=2,y=sig_y,yend=sig_y, linewidth=0.5) +
-        annotate("text", x=1.5,y=sig_y*1.03,label=p_label, hjust=0.5, fontface="bold", size=3.5) +
+        annotate("text", x=1.5,y=sig_y*1.03,label=p_label, hjust=0.5, fontface="bold", size=5.5) +
         scale_fill_manual(values=c("Published"="#1F78B4","Not Published"="#A6CEE3")) +
         scale_color_manual(values=c("Published"="#1F78B4","Not Published"="#A6CEE3")) +
         coord_cartesian(ylim=c(0,sig_y*1.12)) +
-        labs(title="RQI Distribution by Publication Status (Bioinformatics)", x=NULL, y="RQI (1–5)") +
+        labs(title="RQI Distribution by Publication Status (Bioinformatics)", x=NULL, y="RQI (0–5)") +
         theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) +
         theme(legend.position="none", plot.title=element_text(face="bold",hjust=0.5))
       
     } else if (input$cit_plot == "fig5a") {
       # Uses citations_raw (not craw) — see note in pub_bar above.
       base_data <- citations_raw %>%
-        filter(tolower(type)=="bioinformatics", !is.na(z_normalized_1to5)) %>%
+        filter(tolower(type)=="bioinformatics", !is.na(final_score_1to5)) %>%
         mutate(
           pub_label    = factor(pub_label, levels=c("Published","Not Published")),
-          recency_1to5 = scale_1to5(recency_z),
-          issue_1to5   = scale_1to5(issue_z),
-          pop_1to5     = scale_1to5(pop_z)
+          recency_1to5 = recency_score_1to5,
+          issue_1to5   = issue_score_1to5,
+          pop_1to5     = pop_score_1to5
         )
       comp_long <- base_data %>%
         select(pub_label, recency_1to5, issue_1to5, pop_1to5) %>%
         pivot_longer(-pub_label, names_to="component", values_to="score") %>%
         mutate(component=recode(component, recency_1to5="Recency", issue_1to5="Activity", pop_1to5="Popularity"))
       comp_stats <- comp_long %>% group_by(pub_label,component) %>% summarise(med=median(score,na.rm=TRUE),.groups="drop")
-      rqi_stats  <- base_data %>% group_by(pub_label) %>% summarise(med=median(z_normalized_1to5,na.rm=TRUE), n=n(), .groups="drop")
+      rqi_stats  <- base_data %>% group_by(pub_label) %>% summarise(med=median(final_score_1to5,na.rm=TRUE), n=n(), .groups="drop")
       invisible(require_two_groups(base_data$pub_label, "publication-status"))
-      wt <- wilcox.test(z_normalized_1to5~pub_label, data=base_data, exact=FALSE)
+      wt <- wilcox.test(final_score_1to5~pub_label, data=base_data, exact=FALSE)
       p_label <- ifelse(wt$p.value<0.0001,"p < 0.0001", paste0("p = ",round(wt$p.value,4)))
       comp_colors <- c(Recency="#E31A1C", Activity="#33A02C", Popularity="#FF7F00")
       deep_blue <- "#08519C"
       fill_values <- c(Published=deep_blue, `Not Published`=deep_blue, RQI=deep_blue, comp_colors)
       
       ggplot() +
-        geom_violin(data=base_data, aes(x=pub_label,y=z_normalized_1to5,fill=pub_label),
+        geom_violin(data=base_data, aes(x=pub_label,y=final_score_1to5,fill=pub_label),
                     trim=TRUE, width=0.75, alpha=0.20, linewidth=0.4, color="grey60") +
         geom_violin(data=comp_long %>% filter(component=="Popularity"), aes(x=pub_label,y=score),
                     fill=comp_colors[["Popularity"]], color=NA, trim=TRUE, width=0.55, alpha=0.55) +
@@ -1549,17 +1708,17 @@ server <- function(input, output) {
                     fill=comp_colors[["Recency"]], color=NA, trim=TRUE, width=0.25, alpha=0.75) +
         geom_point(data=comp_stats, aes(x=pub_label,y=med,fill=component), shape=23, size=3.5, color="black", stroke=0.6) +
         geom_text(data=comp_stats, aes(x=pub_label,y=med,label=round(med,2)),
-                  color="black", hjust=-0.45, fontface="bold", size=4, inherit.aes=FALSE, show.legend=FALSE) +
+                  color="black", hjust=-0.45, fontface="bold", size=5.5, inherit.aes=FALSE, show.legend=FALSE) +
         geom_text(data=rqi_stats, aes(x=pub_label,y=5.3,label=paste0("n=",n)),
-                  vjust=0, fontface="bold", size=4.5, color="grey40", inherit.aes=FALSE) +
+                  vjust=0, fontface="bold", size=5.5, color="grey40", inherit.aes=FALSE) +
         geom_point(data=rqi_stats, aes(x=pub_label,y=med,fill="RQI"), shape=21, size=4.5, color="black", stroke=0.7) +
         geom_text(data=rqi_stats, aes(x=pub_label,y=med,label=round(med,2)),
-                  hjust=1.45, fontface="bold", size=4, color="black", inherit.aes=FALSE, show.legend=FALSE) +
-        annotate("text", x=1.5,y=5.15, label=paste("Wilcoxon (RQI)",p_label), hjust=0.5, fontface="italic", size=3.6, color="grey35") +
+                  hjust=1.45, fontface="bold", size=5.5, color="black", inherit.aes=FALSE, show.legend=FALSE) +
+        annotate("text", x=1.5,y=5.15, label=paste("Wilcoxon (RQI)",p_label), hjust=0.5, fontface="italic", size=5.5, color="grey35") +
         scale_fill_manual(values=fill_values, breaks=c("RQI","Recency","Activity","Popularity"), name=NULL) +
-        scale_y_continuous(limits=c(1,5.3), breaks=1:5) +
+        scale_y_continuous(limits=c(0,5.3), breaks=0:5) +
         labs(title="RQI and Components by Publication Status (Bioinformatics)",
-             subtitle="Components scaled 1–5", x=NULL, y="Score (1–5)") +
+             subtitle="Components scaled 0–5", x=NULL, y="Score (0–5)") +
         theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) +
         theme(plot.title=element_text(face="bold",hjust=0.5,size=24),
               plot.subtitle=element_text(hjust=0.5,color="grey40",size=16),
@@ -1568,27 +1727,27 @@ server <- function(input, output) {
       
     } else if (input$cit_plot == "age_scatter") {
       model_data <- craw %>%
-        filter(!is.na(z_normalized_1to5), !is.na(repo_age_days), !is.na(citation_count),
+        filter(!is.na(final_score_1to5), !is.na(repo_age_days), !is.na(citation_count),
                published, citation_count>0) %>%
         mutate(log_citations=log1p(citation_count), age_years=repo_age_days/365)
-      ggplot(model_data, aes(x=z_normalized_1to5,y=log_citations,color=age_years)) +
+      ggplot(model_data, aes(x=final_score_1to5,y=log_citations,color=age_years)) +
         geom_point(alpha=0.5,size=2) +
         geom_smooth(method="lm", color="grey20", linewidth=1, se=TRUE) +
         scale_color_viridis_c(name="Repo Age (years)", option="plasma") +
         labs(title="Citation Count Explained by RQI and Repository Age",
-             x="RQI (1–5)", y="log(Citation Count + 1)") +
+             x="RQI (0–5)", y="log(Citation Count + 1)") +
         theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) + theme(plot.title=element_text(face="bold",hjust=0.5))
       
     } else if (input$cit_plot == "scatter_lm") {
       dat <- craw %>%
-        filter(!is.na(z_normalized_1to5), published, citation_count>0) %>%
+        filter(!is.na(final_score_1to5), published, citation_count>0) %>%
         mutate(log_citations=log1p(citation_count))
-      ggplot(dat,aes(x=z_normalized_1to5,y=log_citations)) +
+      ggplot(dat,aes(x=final_score_1to5,y=log_citations)) +
         geom_point(alpha=0.3,size=1.8,color="#1F78B4") +
         geom_smooth(method="lm",color="#1F78B4",fill="#1F78B4",
                     alpha=0.15,linewidth=1.2,se=TRUE) +
         labs(title="Citation Count vs Repository Quality Index",
-             x="RQI (1–5)",y="log(Citations + 1)") +
+             x="RQI (0–5)",y="log(Citations + 1)") +
         theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16))+theme(plot.title=element_text(face="bold",hjust=0.5))
     }
   })
@@ -1596,10 +1755,10 @@ server <- function(input, output) {
   output$citation_table_s2 <- renderTable({
     req(has_citations)
     citations_raw %>%
-      filter(!is.na(citation_count), !is.na(z_normalized_1to5)) %>%
-      arrange(desc(citation_count), z_normalized_1to5) %>%
-      filter(z_normalized_1to5 <= 2.5) %>%
-      select(repo, type, citation_count, z_normalized_1to5, days_since_last_commit, doi) %>%
+      filter(!is.na(citation_count), !is.na(final_score_1to5)) %>%
+      arrange(desc(citation_count), final_score_1to5) %>%
+      filter(final_score_1to5 <= 2.5) %>%
+      select(repo, type, citation_count, final_score_1to5, days_since_last_commit, doi) %>%
       head(20)
   }, striped = TRUE, hover = TRUE, digits = 2)
   
@@ -1608,7 +1767,7 @@ server <- function(input, output) {
     if (!has_funding) {
       p("Funding data not found (oa_publication_summary_gemma.csv).", style="color:gray;")
     } else {
-      plotOutput("funding_plot_out", height="540px")
+      tags$div(class = "plot-card", plotOutput("funding_plot_out", height="660px"))
     }
   })
   
@@ -1617,26 +1776,26 @@ server <- function(input, output) {
     
     if (input$fund_plot == "bar_bio") {
       bar_data <- funding_df %>%
-        filter(tolower(type)=="bioinformatics",!is.na(z_normalized_1to5),!is.na(funding_group))
+        filter(tolower(type)=="bioinformatics",!is.na(final_score_1to5),!is.na(funding_group))
       bar_data$funding_group <- require_two_groups(bar_data$funding_group, "funding-status")
-      w  <- wilcox.test(z_normalized_1to5~funding_group,data=bar_data,exact=FALSE)
+      w  <- wilcox.test(final_score_1to5~funding_group,data=bar_data,exact=FALSE)
       pl <- ifelse(w$p.value<0.0001,"p < 0.0001",paste("p =",round(w$p.value,4)))
       meds <- bar_data %>% group_by(funding_group) %>%
-        summarise(median_rqi=median(z_normalized_1to5,na.rm=TRUE),n=n(),.groups="drop")
+        summarise(median_rqi=median(final_score_1to5,na.rm=TRUE),n=n(),.groups="drop")
       y_max <- max(meds$median_rqi); sig_y <- y_max*1.12
       
-      ggplot(bar_data,aes(x=funding_group,y=z_normalized_1to5,fill=funding_group)) +
+      ggplot(bar_data,aes(x=funding_group,y=final_score_1to5,fill=funding_group)) +
         geom_bar(stat="summary",fun="median",alpha=0.85,width=0.5) +
         geom_jitter(alpha=0.12,width=0.18,size=1.2,color="grey30") +
         geom_text(data=meds,aes(x=funding_group,y=median_rqi,
                                 label=paste0(round(median_rqi,2),"\n(n=",n,")")),
-                  vjust=-0.4,fontface="bold",size=3.8,inherit.aes=FALSE) +
-        annotate("segment",x=1,xend=2,y=sig_y,yend=sig_y,linewidth=0.5) +
-        annotate("text",x=1.5,y=sig_y*1.04,label=pl,hjust=0.5,fontface="bold",size=3.5) +
+                  vjust=-0.4,fontface="bold",size=5.5,inherit.aes=FALSE) +
+        annotate("segment",x=1,xend=2,y=sig_y,yend=sig_y,linewidth=0.6) +
+        annotate("text",x=1.5,y=sig_y*1.06,label=pl,hjust=0.5,fontface="bold",size=5.5) +
         scale_fill_manual(values=c("Grant Funded"="#1F78B4","Not Grant Funded"="#A6CEE3")) +
         scale_y_continuous(limits=c(0,sig_y*1.12)) +
         labs(title="Median RQI by Funding Status (Bioinformatics)",
-             subtitle="Wilcoxon rank-sum test",x=NULL,y="Median RQI (1–5)") +
+             subtitle="Wilcoxon rank-sum test",x=NULL,y="Median RQI (0–5)") +
         theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) +
         theme(legend.position="none",plot.title=element_text(face="bold",hjust=0.5),
               plot.subtitle=element_text(hjust=0.5,color="grey40"))
@@ -1644,70 +1803,70 @@ server <- function(input, output) {
     } else if (input$fund_plot == "lm_dev_bio") {
       lm_data <- funding_df %>%
         filter(tolower(type)=="bioinformatics", !is.na(developer_cost_usd),
-               !is.na(z_normalized_1to5), developer_cost_usd>0) %>%
+               !is.na(final_score_1to5), developer_cost_usd>0) %>%
         mutate(log_award=log10(developer_cost_usd))
-      mod <- lm(z_normalized_1to5~log_award, data=lm_data); ms <- summary(mod)
+      mod <- lm(final_score_1to5~log_award, data=lm_data); ms <- summary(mod)
       beta <- round(coef(mod)[["log_award"]],3); r2 <- round(ms$r.squared,3)
       pval <- round(coef(ms)[2,"Pr(>|t|)"],4)
       sub <- paste0("β=",beta," | R²=",r2," | ", ifelse(pval<0.0001,"p<0.0001",paste("p=",pval))," | n=",nrow(lm_data))
-      ggplot(lm_data, aes(x=log_award,y=z_normalized_1to5)) +
+      ggplot(lm_data, aes(x=log_award,y=final_score_1to5)) +
         geom_point(alpha=0.55,size=2.2,color="#1F78B4") +
         geom_smooth(method="lm", color="#1F78B4", fill="#1F78B4", alpha=0.15, linewidth=1.2, se=TRUE) +
         scale_x_continuous(name="Developer Award Amount (log₁₀ USD)",
                            labels=function(x) paste0("$",format(10^x,big.mark=",",scientific=FALSE))) +
-        labs(title="RQI vs Developer Award Amount (Bioinformatics)", subtitle=sub, y="RQI (1–5)") +
+        labs(title="RQI vs Developer Award Amount (Bioinformatics)", subtitle=sub, y="RQI (0–5)") +
         theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) +
         theme(plot.title=element_text(face="bold",hjust=0.5), plot.subtitle=element_text(hjust=0.5,color="grey40",size=16))
       
     } else if (input$fund_plot == "lm_org_bio") {
       lm_data <- funding_df %>%
         filter(tolower(type)=="bioinformatics", !is.na(total_cost_usd),
-               !is.na(z_normalized_1to5), total_cost_usd>0) %>%
+               !is.na(final_score_1to5), total_cost_usd>0) %>%
         mutate(log_award=log10(total_cost_usd))
-      mod <- lm(z_normalized_1to5~log_award, data=lm_data); ms <- summary(mod)
+      mod <- lm(final_score_1to5~log_award, data=lm_data); ms <- summary(mod)
       beta <- round(coef(mod)[["log_award"]],3); r2 <- round(ms$r.squared,3)
       pval <- round(coef(ms)[2,"Pr(>|t|)"],4)
       sub <- paste0("β=",beta," | R²=",r2," | ", ifelse(pval<0.0001,"p<0.0001",paste("p=",pval))," | n=",nrow(lm_data))
-      ggplot(lm_data, aes(x=log_award,y=z_normalized_1to5)) +
+      ggplot(lm_data, aes(x=log_award,y=final_score_1to5)) +
         geom_point(alpha=0.55,size=2.2,color="#1F78B4") +
         geom_smooth(method="lm", color="#1F78B4", fill="#1F78B4", alpha=0.15, linewidth=1.2, se=TRUE) +
         scale_x_continuous(name="Total Organization Award Amount (log₁₀ USD)",
                            labels=function(x) paste0("$",format(10^x,big.mark=",",scientific=FALSE))) +
-        labs(title="RQI vs Organization Award Amount (Bioinformatics)", subtitle=sub, y="RQI (1–5)") +
+        labs(title="RQI vs Organization Award Amount (Bioinformatics)", subtitle=sub, y="RQI (0–5)") +
         theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) +
         theme(plot.title=element_text(face="bold",hjust=0.5), plot.subtitle=element_text(hjust=0.5,color="grey40",size=16))
       
     } else if (input$fund_plot == "lm_dev_all") {
       lm_data <- funding_df %>%
-        filter(!is.na(developer_cost_usd), !is.na(z_normalized_1to5), developer_cost_usd>0) %>%
+        filter(!is.na(developer_cost_usd), !is.na(final_score_1to5), developer_cost_usd>0) %>%
         mutate(log_award=log10(developer_cost_usd))
-      mod <- lm(z_normalized_1to5~log_award, data=lm_data); ms <- summary(mod)
+      mod <- lm(final_score_1to5~log_award, data=lm_data); ms <- summary(mod)
       beta <- round(coef(mod)[["log_award"]],3); r2 <- round(ms$r.squared,3)
       pval <- round(coef(ms)[2,"Pr(>|t|)"],4)
       sub <- paste0("β=",beta," | R²=",r2," | ", ifelse(pval<0.0001,"p<0.0001",paste("p=",pval))," | n=",nrow(lm_data))
-      ggplot(lm_data, aes(x=log_award,y=z_normalized_1to5)) +
+      ggplot(lm_data, aes(x=log_award,y=final_score_1to5)) +
         geom_point(alpha=0.55,size=2.2,color="#1F78B4") +
         geom_smooth(method="lm", color="#1F78B4", fill="#1F78B4", alpha=0.15, linewidth=1.2, se=TRUE) +
         scale_x_continuous(name="Developer Award Amount (log₁₀ USD)",
                            labels=function(x) paste0("$",format(10^x,big.mark=",",scientific=FALSE))) +
-        labs(title="RQI vs Developer Award Amount (All Domains)", subtitle=sub, y="RQI (1–5)") +
+        labs(title="RQI vs Developer Award Amount (All Domains)", subtitle=sub, y="RQI (0–5)") +
         theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) +
         theme(plot.title=element_text(face="bold",hjust=0.5), plot.subtitle=element_text(hjust=0.5,color="grey40",size=16))
       
     } else if (input$fund_plot == "lm_org_all") {
       lm_data <- funding_df %>%
-        filter(!is.na(total_cost_usd), !is.na(z_normalized_1to5), total_cost_usd>0) %>%
+        filter(!is.na(total_cost_usd), !is.na(final_score_1to5), total_cost_usd>0) %>%
         mutate(log_award=log10(total_cost_usd))
-      mod <- lm(z_normalized_1to5~log_award, data=lm_data); ms <- summary(mod)
+      mod <- lm(final_score_1to5~log_award, data=lm_data); ms <- summary(mod)
       beta <- round(coef(mod)[["log_award"]],3); r2 <- round(ms$r.squared,3)
       pval <- round(coef(ms)[2,"Pr(>|t|)"],4)
       sub <- paste0("β=",beta," | R²=",r2," | ", ifelse(pval<0.0001,"p<0.0001",paste("p=",pval))," | n=",nrow(lm_data))
-      ggplot(lm_data, aes(x=log_award,y=z_normalized_1to5)) +
+      ggplot(lm_data, aes(x=log_award,y=final_score_1to5)) +
         geom_point(alpha=0.55,size=2.2,color="#1F78B4") +
         geom_smooth(method="lm", color="#1F78B4", fill="#1F78B4", alpha=0.15, linewidth=1.2, se=TRUE) +
         scale_x_continuous(name="Total Organization Award Amount (log₁₀ USD)",
                            labels=function(x) paste0("$",format(10^x,big.mark=",",scientific=FALSE))) +
-        labs(title="RQI vs Organization Award Amount (All Domains)", subtitle=sub, y="RQI (1–5)") +
+        labs(title="RQI vs Organization Award Amount (All Domains)", subtitle=sub, y="RQI (0–5)") +
         theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) +
         theme(plot.title=element_text(face="bold",hjust=0.5), plot.subtitle=element_text(hjust=0.5,color="grey40",size=16))
       
@@ -1715,14 +1874,14 @@ server <- function(input, output) {
       # fig5b_bio (bioinformatics) or fig_all (all domains): layered RQI+component violins
       scope_bio <- (input$fund_plot == "fig5b_bio")
       
-      base_data <- funding_df %>% filter(!is.na(z_normalized_1to5))
+      base_data <- funding_df %>% filter(!is.na(final_score_1to5))
       if (scope_bio) base_data <- base_data %>% filter(tolower(type) == "bioinformatics")
       
       base_data <- base_data %>%
         mutate(
-          recency_1to5  = scale_1to5(recency_z),
-          issue_1to5    = scale_1to5(issue_z),
-          pop_1to5      = scale_1to5(pop_z),
+          recency_1to5  = recency_score_1to5,
+          issue_1to5    = issue_score_1to5,
+          pop_1to5      = pop_score_1to5,
           funding_group = factor(funding_group, levels=c("Grant Funded","Not Grant Funded"))
         )
       
@@ -1734,10 +1893,10 @@ server <- function(input, output) {
       comp_stats <- comp_long %>% group_by(funding_group,component) %>%
         summarise(med=median(score,na.rm=TRUE),.groups="drop")
       rqi_stats  <- base_data %>% group_by(funding_group) %>%
-        summarise(med=median(z_normalized_1to5,na.rm=TRUE), n=n(), .groups="drop")
+        summarise(med=median(final_score_1to5,na.rm=TRUE), n=n(), .groups="drop")
       
       invisible(require_two_groups(base_data$funding_group, "funding-status"))
-      wt <- wilcox.test(z_normalized_1to5~funding_group, data=base_data, exact=FALSE)
+      wt <- wilcox.test(final_score_1to5~funding_group, data=base_data, exact=FALSE)
       p_label <- ifelse(wt$p.value<0.0001,"p < 0.0001", paste0("p = ",round(wt$p.value,4)))
       
       comp_colors <- c(Recency="#E31A1C", Activity="#33A02C", Popularity="#FF7F00")
@@ -1746,11 +1905,11 @@ server <- function(input, output) {
       
       title_str <- if (scope_bio) "RQI and Components by Funding Status (Bioinformatics)" else
         "RQI and Components by Funding Status (All Domains)"
-      subtitle_str <- paste0("Components scaled 1–5  |  Grant sources: ",
+      subtitle_str <- paste0("Components scaled 0–5  |  Grant sources: ",
                              paste(funded_sources_list, collapse=", "))
       
       ggplot() +
-        geom_violin(data=base_data, aes(x=funding_group,y=z_normalized_1to5,fill=funding_group),
+        geom_violin(data=base_data, aes(x=funding_group,y=final_score_1to5,fill=funding_group),
                     trim=TRUE, width=0.75, alpha=0.20, linewidth=0.4, color="grey60") +
         geom_violin(data=comp_long %>% filter(component=="Popularity"), aes(x=funding_group,y=score),
                     fill=comp_colors[["Popularity"]], color=NA, trim=TRUE, width=0.55, alpha=0.55) +
@@ -1760,16 +1919,16 @@ server <- function(input, output) {
                     fill=comp_colors[["Recency"]], color=NA, trim=TRUE, width=0.25, alpha=0.75) +
         geom_point(data=comp_stats, aes(x=funding_group,y=med,fill=component), shape=23, size=3.5, color="black", stroke=0.6) +
         geom_text(data=comp_stats, aes(x=funding_group,y=med,label=round(med,2)),
-                  color="black", hjust=-0.45, fontface="bold", size=4, inherit.aes=FALSE, show.legend=FALSE) +
+                  color="black", hjust=-0.45, fontface="bold", size=5.5, inherit.aes=FALSE, show.legend=FALSE) +
         geom_text(data=rqi_stats, aes(x=funding_group,y=5.3,label=paste0("n=",n)),
-                  vjust=0, fontface="bold", size=4.5, color="grey40", inherit.aes=FALSE) +
+                  vjust=0, fontface="bold", size=5.5, color="grey40", inherit.aes=FALSE) +
         geom_point(data=rqi_stats, aes(x=funding_group,y=med,fill="RQI"), shape=21, size=4.5, color="black", stroke=0.7) +
         geom_text(data=rqi_stats, aes(x=funding_group,y=med,label=round(med,2)),
-                  hjust=1.45, fontface="bold", size=4, color="black", inherit.aes=FALSE, show.legend=FALSE) +
-        annotate("text", x=1.5,y=5.15, label=paste("Wilcoxon (RQI)",p_label), hjust=0.5, fontface="italic", size=3.6, color="grey35") +
+                  hjust=1.45, fontface="bold", size=5.5, color="black", inherit.aes=FALSE, show.legend=FALSE) +
+        annotate("text", x=1.5,y=5.15, label=paste("Wilcoxon (RQI)",p_label), hjust=0.5, fontface="italic", size=5.5, color="grey35") +
         scale_fill_manual(values=fill_values, breaks=c("RQI","Recency","Activity","Popularity"), name=NULL) +
-        scale_y_continuous(limits=c(1,5.3), breaks=1:5) +
-        labs(title=title_str, subtitle=subtitle_str, x=NULL, y="Score (1–5)") +
+        scale_y_continuous(limits=c(0,5.3), breaks=0:5) +
+        labs(title=title_str, subtitle=subtitle_str, x=NULL, y="Score (0–5)") +
         theme_minimal(base_size=18) + theme(axis.text=element_text(size=18), axis.title=element_text(size=20), plot.title=element_text(size=24), plot.subtitle=element_text(size=16)) +
         theme(plot.title=element_text(face="bold",hjust=0.5,size=24),
               plot.subtitle=element_text(hjust=0.5,color="grey40",size=9),
