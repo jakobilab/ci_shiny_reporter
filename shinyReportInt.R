@@ -369,6 +369,15 @@ ui <- fluidPage(
   
   tags$head(
     tags$meta(name = "viewport", content = "width=device-width, initial-scale=1"),
+    tags$link(rel = "preconnect", href = "https://use.typekit.net"),
+    tags$link(rel = "preconnect", href = "https://p.typekit.net", crossorigin = "anonymous"),
+    tags$link(rel = "stylesheet", href = "https://use.typekit.net/mae4nta.css"),
+    tags$link(rel = "preconnect", href = "https://fonts.googleapis.com"),
+    tags$link(rel = "preconnect", href = "https://fonts.gstatic.com", crossorigin = "anonymous"),
+    tags$link(
+      rel = "stylesheet",
+      href = "https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Montserrat:wght@400;500;600;700&display=swap"
+    ),
     tags$style(HTML("
       :root {
         --az-red: #AB0520;
@@ -378,12 +387,19 @@ ui <- fluidPage(
         --az-azurite: #1E5288;
         --az-warmgray: #F4EDE5;
         --az-coolgray: #E2E9EB;
+        /* Proxima Nova is a licensed commercial font, loaded here via the
+           Adobe Fonts (Typekit) kit linked above (weights 100/400/600).
+           Montserrat is the free fallback if that stylesheet fails to load. */
+        --font-sans: \"proxima-nova\", 'Montserrat', -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        --font-serif: \"garamond-premier-pro\", 'EB Garamond', 'Times New Roman', serif;
       }
 
       body {
         margin: 0;
         min-height: 100vh;
-        font-family: -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        font-family: var(--font-sans);
+        font-weight: 400;
+        font-style: normal;
         background: var(--az-warmgray);
         color: var(--az-blue);
         /* Reserve space at the bottom so the fixed footer never covers content.
@@ -407,12 +423,15 @@ ui <- fluidPage(
         border-bottom: 4px solid var(--az-red);
         padding: 18px 40px;
         margin: -20px -15px 24px -15px;
+        font-family: var(--font-sans);
+        font-weight: 400;
+        font-style: normal;
       }
       .site-header h1 {
         font-size: 26px;
         line-height: 1.35;
         margin: 0 0 6px;
-        font-weight: 700;
+        font-weight: 600;
         color: var(--az-blue);
       }
       .site-header .subtitle { font-size: 17px; color: #555; }
@@ -439,11 +458,14 @@ ui <- fluidPage(
         flex-wrap: wrap;
         gap: 12px;
         font-size: 1.2rem;
+        font-family: var(--font-sans);
+        font-weight: 400;
+        font-style: normal;
         z-index: 1000;
       }
       .site-footer a { color: #fff; text-decoration: none; }
       .site-footer a:hover { text-decoration: underline; }
-      .site-footer .footer-left { font-weight: 700; }
+      .site-footer .footer-left { font-weight: 600; }
       .site-footer .footer-links a { margin-left: 28px; }
 
       /* ── Sidebar ── */
@@ -510,7 +532,7 @@ ui <- fluidPage(
         box-shadow: 0 0 0 3px rgba(55, 141, 189, 0.25);
       }
 
-      h4 { color: var(--az-red); font-weight: 700; }
+      h4 { color: var(--az-red); font-weight: 600; }
       a { color: var(--az-azurite); }
     "))
   ),
